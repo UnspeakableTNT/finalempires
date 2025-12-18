@@ -1,0 +1,4909 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pixel Conquest P2P (v0.7)</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:#0b0f14; color:#e8eef6; }
+    #topbar{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:10px 12px; border-bottom:1px solid #1a2330; background:#0e141c; }
+    #topbar > *{ display:flex; align-items:center; gap:8px; }
+    .pill{ padding:4px 10px; border:1px solid #223047; border-radius:999px; background:#0b1220; }
+    button{ padding:7px 10px; border-radius:10px; border:1px solid #2a3a55; background:#0f1826; color:#e8eef6; cursor:pointer; }
+    button:hover{ filter:brightness(1.1); }
+    button:disabled{ opacity:.5; cursor:not-allowed; }
+    input[type="range"] { width: 150px; }
+
+    #wrap{ display:grid; grid-template-columns: 1fr 380px; height: calc(100vh - 56px); }
+    #game{
+      width:100%;
+      height:100%;
+      display:block;
+      image-rendering: pixelated;
+      background:#070a10;
+      touch-action: none;
+      cursor: crosshair;
+    }
+    #side{ border-left:1px solid #1a2330; padding:12px; overflow:auto; background:#0b0f14; }
+
+    h3{ margin:10px 0 6px; font-size:14px; opacity:.9; }
+    .small{ font-size:12px; opacity:.88; line-height:1.35; }
+    .row{ display:flex; justify-content:space-between; gap:8px; align-items:flex-start; padding:8px 0; border-bottom:1px dashed #1a2330; }
+    .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace; font-size:12px; }
+    .warn{ color:#ffcc66; } .bad{ color:#ff6b6b; } .good{ color:#6bff95; }
+
+    .orderItem{ padding:8px 10px; border:1px solid #223047; border-radius:12px; background:#0b1220; margin:6px 0; }
+    .orderItem b{ font-weight:600; }
+
+    /* -----------------------------
+       Start: Create / Join overlay
+       ----------------------------- */
+    #roleOverlay{
+      position:absolute; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(8,12,18,0.86);
+      backdrop-filter: blur(6px);
+      z-index:60;
+    }
+    #roleOverlay[hidden]{ display:none; }
+    .roleCard{
+      width:min(920px, calc(100% - 28px));
+      border:1px solid #223047;
+      border-radius:18px;
+      background:linear-gradient(180deg, rgba(20,30,46,0.92), rgba(12,18,28,0.92));
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      padding:18px;
+    }
+    .roleTop{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
+    .roleHint{ color:#a9b7cc; font-size:13px; margin-top:6px; line-height:1.35; }
+    .roleGrid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+    .roleBox{ border:1px solid #223047; border-radius:14px; background:#0c121c; padding:14px; }
+    .roleBox h3{ margin:0 0 8px 0; font-size:16px; }
+    .roleP{ margin:0 0 12px 0; color:#a9b7cc; font-size:13px; line-height:1.35; }
+    .roleLbl{ display:block; font-size:12px; color:#a9b7cc; margin:10px 0 6px 0; }
+    .roleIn{
+      width:100%;
+      padding:9px 10px;
+      border-radius:10px;
+      border:1px solid #2a3a55;
+      background:#0f1826;
+      color:#e8eef6;
+      outline:none;
+      box-sizing:border-box;
+    }
+    .roleIn:focus{ border-color:#3a557f; }
+    .roleRow2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px; }
+    .roleActions{ display:flex; align-items:center; gap:10px; margin-top:12px; }
+    .roleErr{ color:#ffb4b4; font-size:12px; }
+
+    /* -----------------------------
+       Lobby / Home overlay
+       ----------------------------- */
+    #wrap{ position:relative; }
+    #lobbyOverlay{
+      position:absolute; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(8,12,18,0.86);
+      backdrop-filter: blur(6px);
+      z-index:50;
+    }
+    #lobbyOverlay[hidden]{ display:none; }
+    .lobbyCard{
+      width:min(860px, calc(100% - 28px));
+      border:1px solid #223047;
+      border-radius:18px;
+      background:linear-gradient(180deg, #0b1220 0%, #080c12 100%);
+      box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+      padding:16px 16px 14px;
+    }
+    .lobbyTop{
+      display:flex; gap:14px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;
+      margin-bottom:10px;
+    }
+    .lobbyTop h2{ margin:0; font-size:18px; letter-spacing:0.2px; }
+    .lobbyGrid{
+      display:grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap:12px;
+    }
+    @media (max-width: 820px){
+      .lobbyGrid{ grid-template-columns: 1fr; }
+    }
+    .lobbyBox{
+      border:1px solid #223047;
+      border-radius:14px;
+      padding:12px;
+      background:#0b0f14;
+    }
+    .lobbyRow{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+    .lobbyRow input[type="text"]{
+      width: 240px;
+      max-width: 100%;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid #223047;
+      background:#0b1220;
+      color:#e8eef6;
+      outline:none;
+    }
+    .lobbyHint{ opacity:.85; margin-top:8px; font-size:13px; line-height:1.35; }
+    .lobbyPlayers{ display:grid; grid-template-columns:1fr; gap:8px; margin-top:10px; }
+    .lpRow{
+      display:flex; gap:10px; align-items:flex-start; justify-content:space-between;
+      border:1px solid #223047; border-radius:12px; padding:10px;
+      background:#0b1220;
+    }
+    .lpLeft{ display:flex; flex-direction:column; gap:2px; }
+    .lpRight{ display:flex; flex-direction:column; gap:6px; align-items:flex-end; text-align:right; }
+    .tag{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:3px 8px; border-radius:999px;
+      border:1px solid #223047; background:#0b0f14;
+      font-size:12px;
+    }
+    .tag.good{ border-color:rgba(34,255,149,0.35); color:#22ff95; }
+    .tag.warn{ border-color:rgba(255,216,107,0.35); color:#ffd86b; }
+    .tag.bad{ border-color:rgba(255,107,107,0.35); color:#ff6b6b; }
+    .actionsBar{
+      display:flex; gap:10px; align-items:center; justify-content:flex-end;
+      margin-top:12px; flex-wrap:wrap;
+    }
+    .ghostBtn{
+      background:transparent;
+      border:1px solid #223047;
+    }
+
+
+
+    /* Nation select */
+    .lobbyRow select{
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid #223047;
+      background:#0b1220;
+      color:#e8eef6;
+      outline:none;
+    }
+
+    /* -----------------------------
+       Nation Config overlay (host tool)
+       ----------------------------- */
+    #nationCfgOverlay{
+      position:absolute; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(8,12,18,0.86);
+      backdrop-filter: blur(6px);
+      z-index:60;
+    }
+    #nationCfgOverlay[hidden]{ display:none; }
+
+
+/* -----------------------------
+   Biome Config overlay (host tool)
+   ----------------------------- */
+#biomeCfgOverlay{
+  position:absolute; inset:0;
+  display:flex; align-items:flex-start; justify-content:flex-start;
+  padding:14px;
+  background:transparent;
+  pointer-events:none;
+  z-index:65;
+}
+#biomeCfgOverlay[hidden]{ display:none; }
+#biomeCfgOverlay .cfgCard{ pointer-events:auto; }
+.biomeSwatch{
+  display:inline-block;
+  width:12px; height:12px;
+  border-radius:3px;
+  border:1px solid rgba(255,255,255,0.25);
+  margin-right:8px;
+  vertical-align:-2px;
+}
+
+    .cfgCard{
+      width:min(980px, calc(100% - 28px));
+      border:1px solid #223047;
+      border-radius:18px;
+      background:linear-gradient(180deg, #0b1220 0%, #080c12 100%);
+      box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+      padding:16px 16px 14px;
+    }
+    .cfgTop{ display:flex; gap:14px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px; }
+    .cfgTop h2{ margin:0; font-size:18px; letter-spacing:0.2px; }
+    .cfgGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 820px){ .cfgGrid{ grid-template-columns:1fr; } }
+    .cfgBox{ border:1px solid #223047; border-radius:14px; padding:12px; background:#0b0f14; }
+    .cfgList{ display:grid; grid-template-columns:1fr; gap:8px; margin-top:10px; max-height:320px; overflow:auto; }
+    .cfgItem{ display:flex; justify-content:space-between; gap:10px; border:1px solid #223047; border-radius:12px; padding:10px; background:#0b1220; }
+    .cfgItem .mono{ opacity:.92; }
+    .cfgOut{
+      width:100%;
+      min-height:180px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid #223047;
+      background:#0b1220;
+      color:#e8eef6;
+      outline:none;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+      font-size:12px;
+      line-height:1.35;
+      resize:vertical;
+    }
+
+  
+    /* --- Nation config UX: show map + allow clicking while configuring --- */
+    #nationCfgOverlay{
+      background:transparent !important;
+      backdrop-filter:none !important;
+      align-items:flex-start !important;
+      justify-content:flex-start !important;
+      padding:14px !important;
+      pointer-events:none !important;
+    }
+    #nationCfgOverlay .cfgCard{
+      pointer-events:auto !important;
+      max-height: calc(100% - 28px);
+      overflow:auto;
+    }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <div class="pill"><span>Room:</span> <span id="roomLabel" class="mono"></span></div>
+    <div class="pill"><span>Code:</span> <span id="codeLabel" class="mono"></span></div>
+    <div class="pill"><span>Me:</span> <span id="meLabel" class="mono"></span></div>
+    <div class="pill"><span>Token:</span> <span id="tokenLabel" class="mono"></span></div>
+    <div class="pill"><span>My Slot:</span> <span id="slotLabel" class="mono"></span></div>
+    <div class="pill"><span>Host:</span> <span id="hostLabel" class="mono"></span></div>
+    <div class="pill"><span>Status:</span> <span id="netLabel"></span></div>
+
+    <div style="margin-left:auto; gap:8px;">
+      <button id="modeBtn">Mode: Auto</button>
+      <button id="clearOrdersBtn">Clear Orders</button>
+
+      <button id="copyTokBtn">Copy Token</button>
+      <button id="newIdBtn">New Identity (tab)</button>
+      <button id="saveTokBtn">Save Token</button>
+      <button id="restoreTokBtn">Restore Saved</button>
+      <button id="lobbyBtn">Lobby</button>
+      <button id="nationCfgBtn" hidden>Nation Config</button>
+      <button id="biomeCfgBtn">Biome Config</button>
+      <button id="resetBtn">Reset Match (host)</button>
+    </div>
+  </div>
+
+  <div id="wrap">
+
+    <div id="roleOverlay" hidden>
+      <div class="roleCard">
+        <div class="roleTop">
+          <div>
+            <h2>Start</h2>
+            <div class="roleHint">Create a new game (host) or join an existing one using a Room ID + Code.</div>
+          </div>
+        </div>
+
+        <div class="roleGrid">
+          <div class="roleBox">
+            <h3>Create Game</h3>
+            <p class="roleP">Generates a new Room ID and Code. You will be the host until the match starts.</p>
+            <button id="createGameBtn">Create Game</button>
+          </div>
+
+          <div class="roleBox">
+            <h3>Join Game</h3>
+            <label class="roleLbl">Join link (optional)</label>
+            <input id="joinLinkInput" class="roleIn" placeholder="Paste join link" />
+            <div class="roleRow2">
+              <div>
+                <label class="roleLbl">Room ID</label>
+                <input id="joinRoomInput" class="roleIn" placeholder="px-..." />
+              </div>
+              <div>
+                <label class="roleLbl">Code</label>
+                <input id="joinCodeInput" class="roleIn" placeholder="ABC123" />
+              </div>
+            </div>
+            <div class="roleActions">
+              <button id="joinGameBtn">Join</button>
+              <span id="roleErr" class="roleErr"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="lobbyOverlay">
+      <div class="lobbyCard">
+        <div class="lobbyTop">
+          <div>
+            <h2>Lobby</h2>
+            <div class="lobbyHint">
+              Share the join link. Everyone enters a name and clicks <b>Ready</b>. The host starts the match and the room locks.
+            </div>
+          </div>
+          <div class="pill">
+            <span class="mono">Phase:</span>
+            <span id="phaseLabel" class="mono">Lobby</span>
+          </div>
+        </div>
+
+        <div class="lobbyGrid">
+          <div class="lobbyBox">
+            <div class="mono" style="opacity:.85;">Room</div>
+            <div class="lobbyRow">
+              <div class="pill"><span>ID:</span> <span id="lobbyRoomId" class="mono"></span></div>
+              <button id="copyJoinBtn">Copy Join Link</button>
+              <button id="copyRoomBtn" class="ghostBtn">Copy Room ID</button>
+            </div>
+
+            <div class="lobbyRow">
+              <div class="pill"><span>Code:</span> <span id="lobbyJoinCode" class="mono"></span></div>
+              <button id="copyCodeBtn" class="ghostBtn">Copy Code</button>
+            </div>
+            <div class="lobbyHint"><span class="mono">Note:</span> Everyone must use the same code to join this room.</div>
+
+            <div class="mono" style="opacity:.85; margin-top:12px;">You</div>
+            <div class="lobbyRow">
+              <input id="nameInput" type="text" placeholder="Enter your name" maxlength="18" />
+              <select id="nationSelect" title="Choose your nation"></select>
+              <button id="readyBtn">Ready</button>
+              <span id="readyState" class="mono" style="opacity:.85;"></span>
+            </div>
+
+            <div class="lobbyHint">
+              <span class="mono">Tip:</span> Open the join link in another browser/device to simulate other players joining.
+            </div>
+          </div>
+
+          <div class="lobbyBox">
+            <div class="mono" style="opacity:.85;">Players</div>
+            <div id="lobbyPlayers" class="lobbyPlayers"></div>
+
+            <div class="actionsBar">
+              <button id="lobbyNationCfgBtn" class="ghostBtn" hidden>Configure Country Locations</button>
+              <button id="lobbyBiomeCfgBtn" class="ghostBtn">Configure Biomes</button>
+              <button id="startMatchBtn" class="good">Start Match (host)</button>
+              <button id="leaveLobbyBtn" class="ghostBtn">Close Lobby</button>
+            </div>
+
+            <div id="hostReqHint" class="lobbyHint"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div id="nationCfgOverlay" hidden>
+      <div class="cfgCard">
+        <div class="cfgTop">
+          <div>
+            <h2>Nation Spawn Config (host)</h2>
+            <div class="lobbyHint">
+              Pick a nation, then click on the map to set its starting position. When you click <b>Copy Config</b>, you will get a text block you can paste back to me to hardcode later.
+            </div>
+          </div>
+          <div class="pill"><span class="mono">Mode:</span> <span id="cfgModeLabel" class="mono">View</span></div>
+        </div>
+
+        <div class="cfgGrid">
+          <div class="cfgBox">
+            <div class="mono" style="opacity:.85;">Select Nation</div>
+            <div class="lobbyRow" style="margin-top:10px;">
+              <select id="cfgNationSelect" title="Nation to configure"></select>
+              <button id="cfgPickBtn">Pick on Map</button>
+              <button id="cfgClearNationBtn" class="ghostBtn">Clear Nation</button>
+            </div>
+            <div class="lobbyHint">
+              <span class="mono">Tip:</span> The map is still visible behind this window. Click once to set the nation position.
+            </div>
+
+            <div class="mono" style="opacity:.85; margin-top:12px;">Configured</div>
+            <div id="cfgList" class="cfgList"></div>
+
+            <div class="actionsBar">
+              <button id="cfgCopyBtn" class="good">Copy Config</button>
+              <button id="cfgCloseBtn" class="ghostBtn">Close</button>
+            </div>
+          </div>
+
+          <div class="cfgBox">
+            <div class="mono" style="opacity:.85;">Config Output</div>
+            <div class="lobbyHint" style="margin-top:8px;">
+              This is the text that will be copied. Send it to me and I’ll paste it into the code.
+            </div>
+            <textarea id="cfgOut" class="cfgOut" readonly></textarea>
+            <div class="actionsBar">
+              <button id="cfgResetAllBtn" class="ghostBtn">Reset All</button>
+              <button id="cfgSaveLocalBtn" class="ghostBtn">Save Locally</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+        
+
+<div id="biomeCfgOverlay" hidden>
+  <div class="cfgCard">
+    <div class="cfgTop">
+      <div>
+        <h2>Biome Region Config (host)</h2>
+        <div class="lobbyHint">
+          Select a biome and <b>drag</b> rectangles on the map to paint regions.
+          Hold <b>Shift</b> while dragging to erase.
+          Pan with <b>Space + drag</b> (or middle mouse). Zoom with the mouse wheel.
+        </div>
+      </div>
+      <div class="pill">
+        <span class="mono">Rects:</span>
+        <span id="biomeRectCount" class="mono">0</span>
+      </div>
+    </div>
+
+    <div class="cfgGrid">
+      <div class="cfgBox">
+        <div class="mono" style="opacity:.85;">Paint</div>
+        <div class="lobbyRow">
+          <select id="cfgBiomeSelect" title="Choose biome"></select>
+          <button id="biomeUndoBtn" class="ghostBtn">Undo</button>
+          <button id="biomeClearBtn" class="ghostBtn">Clear</button>
+        </div>
+
+        <div class="lobbyHint">
+          <span class="mono">Tip:</span> Left-drag paints a rectangle. Shift+drag erases. Click paints a single cell.
+        </div>
+
+        <div class="mono" style="opacity:.85; margin-top:10px;">Rectangles (newest first)</div>
+        <div id="biomeRectList" class="cfgList"></div>
+      </div>
+
+      <div class="cfgBox">
+        <div class="mono" style="opacity:.85;">Copy to hardcode later</div>
+        <textarea id="biomeCfgOut" class="cfgOut" readonly></textarea>
+
+        <div class="lobbyRow">
+          <button id="biomeCopyBtn">Copy Config</button>
+          <button id="biomeCloseBtn" class="ghostBtn">Close</button>
+        </div>
+
+        <div class="lobbyHint">
+          This is an offline host tool (same idea as the nation tool): copy the snippet and paste it back into your code when you’re ready to hardcode biomes.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    <canvas id="game"></canvas>
+    <div id="side">
+      <h3>Send Troops</h3>
+      <div class="small">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div class="mono">Percent</div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input id="sendPct" type="range" min="5" max="80" value="20" />
+            <span id="sendPctLabel" class="mono">20%</span>
+          </div>
+        </div>
+        <div class="mono" style="opacity:.75; margin-top:6px;">Each click creates a new attack order using this % of your <b>available</b> army.</div>
+      </div>
+
+      <h3>Hover</h3>
+      <div id="hoverInfo" class="small mono">—</div>
+
+      <h3>My Stats</h3>
+      <div id="myStats" class="small mono">—</div>
+
+      <h3>My Orders</h3>
+      <div id="ordersPanel" class="small">—</div>
+
+      <h3>Players (max 6)</h3>
+      <div id="players"></div>
+
+      <h3>Map Controls</h3>
+      <div class="small">
+        <div>• <b>Pan:</b> click/touch + drag (like moving an image).</div>
+        <div>• <b>Zoom:</b> mouse wheel / trackpad scroll (zooms to cursor).</div>
+      </div>
+
+      <h3>Orders</h3>
+      <div class="small">
+        <div>• <b>Combat/Defense:</b> uses <b>available army only</b>. (Population is displayed but does not affect borders.)</div>
+        <div>• <b>Auto:</b> click enemy/neutral to create orders (multiple orders allowed). Auto will also use <b>boats</b> if the target is across water.</div>
+        <div>• <b>Manual:</b> click your landmass (select component), then click targets (multiple).</div>
+        <div>• <b>Sea transport:</b> boats follow a <b>water-only route</b> (no straight-line land cutting).</div>
+        <div>• If you lose all land: <b>eliminated → spectator</b>.</div>
+        <div style="margin-top:8px;">Optional mask: add <span class="mono">world-mask.png</span> next to this file (white=land, black=water).</div>
+      </div>
+
+      <h3>Debug</h3>
+      <div id="debug" class="small mono"></div>
+    </div>
+  </div>
+
+  <script src="countries195.js"></script>
+  <script type="module">
+    import { joinRoom, selfId } from 'https://esm.run/trystero/torrent';
+
+    const SESSION_KEY = 'px_session_token_v7';
+    const SAVED_KEY = 'px_saved_token_v7';
+
+    const qs = new URLSearchParams(location.search);
+    let token = qs.get('token') || sessionStorage.getItem(SESSION_KEY);
+    if (!token) {
+      token = crypto.randomUUID();
+      sessionStorage.setItem(SESSION_KEY, token);
+    }
+// -----------------------------
+// Room join code (prevents accidental auto-joining the same match)
+// -----------------------------
+function randomJoinCode(len = 6) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/1/I/O for readability
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}
+
+let joinCode = (qs.get('code') || qs.get('pw') || '').trim();
+joinCode = joinCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10);
+
+/* joinCode is now only generated when you click Create Game */
+
+
+// -----------------------------
+// Create / Join role (prevents split-brain hosting in lobby)
+// -----------------------------
+const ROLE_STORE_KEY = 'px_role_select_v7';
+const DEFAULT_ROOM_ID = 'demo-room';
+
+const urlRoomId = (location.hash.slice(1) || '').trim();
+const initialRoomId = (urlRoomId || DEFAULT_ROOM_ID).trim();
+
+function loadRolePref() {
+  try { return JSON.parse(sessionStorage.getItem(ROLE_STORE_KEY) || 'null'); } catch { return null; }
+}
+function saveRolePref(roomId, code, role) {
+  try { sessionStorage.setItem(ROLE_STORE_KEY, JSON.stringify({ roomId, code, role, at: Date.now() })); } catch {}
+}
+function clearRolePref() {
+  try { sessionStorage.removeItem(ROLE_STORE_KEY); } catch {}
+}
+function randomRoomId(len = 8) {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  let out = 'px-';
+  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}
+function buildUrlFor(roomId, code) {
+  const u = new URL(location.href);
+  u.hash = '#' + roomId;
+  if (code) u.searchParams.set('code', code);
+  else u.searchParams.delete('code');
+  u.searchParams.delete('pw');
+  u.searchParams.delete('token');
+  return u.toString();
+}
+
+let ROLE = null;
+const pref = loadRolePref();
+if (pref && pref.roomId === initialRoomId && pref.code === joinCode && (pref.role === 'host' || pref.role === 'join')) {
+  ROLE = pref.role;
+}
+
+// If someone opens a shared join link, default to joiner mode automatically.
+if (!ROLE && joinCode && urlRoomId) ROLE = 'join';
+
+function initRoleOverlay() {
+  const overlay = document.getElementById('roleOverlay');
+  if (!overlay) return;
+
+  overlay.hidden = false;
+
+  const joinLinkEl = document.getElementById('joinLinkInput');
+  const joinRoomEl = document.getElementById('joinRoomInput');
+  const joinCodeEl = document.getElementById('joinCodeInput');
+  const createBtn = document.getElementById('createGameBtn');
+  const joinBtn = document.getElementById('joinGameBtn');
+
+  // Prefill from URL (if present)
+  if (joinRoomEl) joinRoomEl.value = initialRoomId;
+  if (joinCodeEl) joinCodeEl.value = joinCode || '';
+  if (joinLinkEl) {
+    // If URL already has a room+code, show it as the join link.
+    if (joinCode && initialRoomId) joinLinkEl.value = buildUrlFor(initialRoomId, joinCode);
+    else joinLinkEl.value = '';
+  }
+
+  if (createBtn) createBtn.onclick = () => {
+    const rid = randomRoomId(8);
+    const code = randomJoinCode(6);
+    saveRolePref(rid, code, 'host');
+    location.href = buildUrlFor(rid, code);
+  };
+
+  if (joinBtn) joinBtn.onclick = () => {
+    let rid = (joinRoomEl?.value || '').trim();
+    let code = (joinCodeEl?.value || '').trim();
+
+    const raw = (joinLinkEl?.value || '').trim();
+    if (raw) {
+      try {
+        const u = new URL(raw, location.href);
+        const h = (u.hash || '').replace(/^#/, '').trim();
+        const c = String(u.searchParams.get('code') || u.searchParams.get('pw') || '').trim();
+        if (h) rid = h;
+        if (c) code = c;
+      } catch {}
+    }
+
+    rid = (rid || '').trim();
+    code = (code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10);
+
+    if (!rid || !code) {
+      const err = document.getElementById('roleErr');
+      if (err) err.textContent = 'Enter a Room ID and Code (or paste a full join link).';
+      return;
+    }
+
+    saveRolePref(rid, code, 'join');
+    location.href = buildUrlFor(rid, code);
+  };
+}
+
+if (!ROLE) {
+  initRoleOverlay();
+} else {
+
+
+    // -----------------------------
+    // Config
+    // -----------------------------
+    const MAX_PLAYERS = 6;
+    // -----------------------------
+    // Nations (player chooses one)
+    // -----------------------------
+    // Uses countries195.js (window.COUNTRIES195) when available; otherwise falls back to a short built-in list.
+    const NATIONS_FALLBACK = [
+      { key:'USA', label:'United States' },
+      { key:'CHN', label:'China' },
+      { key:'RUS', label:'Russia' },
+      { key:'IND', label:'India' },
+      { key:'GBR', label:'United Kingdom' },
+      { key:'DEU', label:'Germany' },
+      { key:'FRA', label:'France' },
+      { key:'JPN', label:'Japan' },
+      { key:'CAN', label:'Canada' },
+      { key:'BRA', label:'Brazil' },
+      { key:'AUS', label:'Australia' },
+      { key:'ITA', label:'Italy' },
+      { key:'ESP', label:'Spain' },
+      { key:'MEX', label:'Mexico' },
+      { key:'TUR', label:'Turkey' },
+      { key:'SAU', label:'Saudi Arabia' },
+      { key:'EGY', label:'Egypt' },
+      { key:'ZAF', label:'South Africa' },
+      { key:'ARG', label:'Argentina' },
+      { key:'IDN', label:'Indonesia' },
+      { key:'NGA', label:'Nigeria' },
+      { key:'PAK', label:'Pakistan' },
+      { key:'IRN', label:'Iran' },
+      { key:'UKR', label:'Ukraine' },
+      { key:'NLD', label:'Netherlands' },
+      { key:'POL', label:'Poland' },
+      { key:'SWE', label:'Sweden' },
+      { key:'NOR', label:'Norway' },
+      { key:'GRC', label:'Greece' },
+      { key:'ISR', label:'Israel' }
+    ];
+    const NATIONS_SRC = (Array.isArray(window.COUNTRIES195) && window.COUNTRIES195.length)
+      ? window.COUNTRIES195
+      : NATIONS_FALLBACK;
+    const NATIONS = NATIONS_SRC.map(n => ({
+      key: String(n?.key || '').toUpperCase(),
+      label: String(n?.label || n?.key || '').trim() || String(n?.key || '').toUpperCase()
+    }));
+    const NATION_KEYS = new Set(NATIONS.map(n => n.key));
+    const NATION_LABELS = new Map(NATIONS.map(n => [n.key, n.label]));
+    function nationLabel(key) {
+      const k = String(key || '').toUpperCase();
+      return NATION_LABELS.get(k) || (k || '—');
+    }
+
+    // Placeholder for a future hardcoded config block you will send back to me.
+    // Format: { "USA": {x:10,y:20}, ... } where x,y are in grid-cells (0..GW-1 / 0..GH-1)
+    // Paste this into the code near NATION_SPAWNS
+    const NATION_SPAWNS = {
+        "AFG": {
+            "x": 496,
+            "y": 115
+        },
+        "ALB": {
+            "x": 397,
+            "y": 92
+        },
+        "DZA": {
+            "x": 371,
+            "y": 117
+        },
+        "AND": {
+            "x": 361,
+            "y": 95
+        },
+        "AGO": {
+            "x": 396,
+            "y": 200
+        },
+        "ATG": {
+            "x": 234,
+            "y": 145
+        },
+        "ARG": {
+            "x": 239,
+            "y": 249
+        },
+        "ARM": {
+            "x": 446,
+            "y": 100
+        },
+        "AUS": {
+            "x": 631,
+            "y": 227
+        },
+        "AUT": {
+            "x": 387,
+            "y": 85
+        },
+        "AZE": {
+            "x": 450,
+            "y": 101
+        },
+        "BHS": {
+            "x": 205,
+            "y": 132
+        },
+        "BHR": {
+            "x": 459,
+            "y": 128
+        },
+        "BGD": {
+            "x": 534,
+            "y": 133
+        },
+        "BRB": {
+            "x": 237,
+            "y": 149
+        },
+        "BLR": {
+            "x": 421,
+            "y": 75
+        },
+        "BEL": {
+            "x": 372,
+            "y": 77
+        },
+        "BLZ": {
+            "x": 192,
+            "y": 151
+        },
+        "BEN": {
+            "x": 362,
+            "y": 160
+        },
+        "BTN": {
+            "x": 552,
+            "y": 124
+        },
+        "BOL": {
+            "x": 238,
+            "y": 210
+        },
+        "BIH": {
+            "x": 399,
+            "y": 89
+        },
+        "BWA": {
+            "x": 408,
+            "y": 224
+        },
+        "BRA": {
+            "x": 269,
+            "y": 198
+        },
+        "BRN": {
+            "x": 591,
+            "y": 170
+        },
+        "BGR": {
+            "x": 407,
+            "y": 97
+        },
+        "BFA": {
+            "x": 358,
+            "y": 155
+        },
+        "BDI": {
+            "x": 419,
+            "y": 184
+        },
+        "CPV": {
+            "x": 313,
+            "y": 150
+        },
+        "KHM": {
+            "x": 568,
+            "y": 153
+        },
+        "CMR": {
+            "x": 384,
+            "y": 171
+        },
+        "CAN": {
+            "x": 135,
+            "y": 55
+        },
+        "CAF": {
+            "x": 405,
+            "y": 165
+        },
+        "TCD": {
+            "x": 391,
+            "y": 138
+        },
+        "CHL": {
+            "x": 221,
+            "y": 242
+        },
+        "CHN": {
+            "x": 568,
+            "y": 114
+        },
+        "COL": {
+            "x": 212,
+            "y": 168
+        },
+        "COM": {
+            "x": 435,
+            "y": 195
+        },
+        "COG": {
+            "x": 390,
+            "y": 185
+        },
+        "COD": {
+            "x": 405,
+            "y": 188
+        },
+        "CRI": {
+            "x": 190,
+            "y": 155
+        },
+        "CIV": {
+            "x": 352,
+            "y": 167
+        },
+        "HRV": {
+            "x": 391,
+            "y": 88
+        },
+        "CUB": {
+            "x": 203,
+            "y": 136
+        },
+        "CYP": {
+            "x": 426,
+            "y": 110
+        },
+        "CZE": {
+            "x": 385,
+            "y": 82
+        },
+        "DNK": {
+            "x": 284,
+            "y": 34
+        },
+        "DJI": {
+            "x": 440,
+            "y": 153
+        },
+        "DMA": {
+            "x": 231,
+            "y": 143
+        },
+        "DOM": {
+            "x": 227,
+            "y": 144
+        },
+        "ECU": {
+            "x": 205,
+            "y": 184
+        },
+        "EGY": {
+            "x": 421,
+            "y": 127
+        },
+        "SLV": {
+            "x": 190,
+            "y": 159
+        },
+        "GNQ": {
+            "x": 375,
+            "y": 168
+        },
+        "ERI": {
+            "x": 443,
+            "y": 154
+        },
+        "EST": {
+            "x": 411,
+            "y": 63
+        },
+        "SWZ": {
+            "x": 419,
+            "y": 233
+        },
+        "ETH": {
+            "x": 446,
+            "y": 167
+        },
+        "FJI": {
+            "x": 716,
+            "y": 216
+        },
+        "FIN": {
+            "x": 413,
+            "y": 52
+        },
+        "FRA": {
+            "x": 367,
+            "y": 85
+        },
+        "GAB": {
+            "x": 382,
+            "y": 183
+        },
+        "GMB": {
+            "x": 337,
+            "y": 164
+        },
+        "GEO": {
+            "x": 445,
+            "y": 96
+        },
+        "DEU": {
+            "x": 381,
+            "y": 76
+        },
+        "GHA": {
+            "x": 373,
+            "y": 164
+        },
+        "GRC": {
+            "x": 403,
+            "y": 99
+        },
+        "GRD": {
+            "x": 237,
+            "y": 159
+        },
+        "GTM": {
+            "x": 179,
+            "y": 149
+        },
+        "GIN": {
+            "x": 380,
+            "y": 168
+        },
+        "GNB": {
+            "x": 335,
+            "y": 160
+        },
+        "GUY": {
+            "x": 234,
+            "y": 163
+        },
+        "HTI": {
+            "x": 217,
+            "y": 142
+        },
+        "HND": {
+            "x": 187,
+            "y": 151
+        },
+        "HUN": {
+            "x": 406,
+            "y": 88
+        },
+        "ISL": {
+            "x": 323,
+            "y": 50
+        },
+        "IND": {
+            "x": 514,
+            "y": 144
+        },
+        "IDN": {
+            "x": 566,
+            "y": 184
+        },
+        "IRN": {
+            "x": 464,
+            "y": 104
+        },
+        "IRQ": {
+            "x": 447,
+            "y": 110
+        },
+        "IRL": {
+            "x": 345,
+            "y": 73
+        },
+        "ISR": {
+            "x": 431,
+            "y": 118
+        },
+        "ITA": {
+            "x": 389,
+            "y": 97
+        },
+        "JAM": {
+            "x": 194,
+            "y": 135
+        },
+        "JPN": {
+            "x": 637,
+            "y": 108
+        },
+        "JOR": {
+            "x": 435,
+            "y": 119
+        },
+        "KAZ": {
+            "x": 501,
+            "y": 89
+        },
+        "KEN": {
+            "x": 443,
+            "y": 174
+        },
+        "KIR": {
+            "x": 714,
+            "y": 205
+        },
+        "PRK": {
+            "x": 614,
+            "y": 103
+        },
+        "KOR": {
+            "x": 616,
+            "y": 107
+        },
+        "KWT": {
+            "x": 453,
+            "y": 123
+        },
+        "KGZ": {
+            "x": 513,
+            "y": 105
+        },
+        "LAO": {
+            "x": 567,
+            "y": 143
+        },
+        "LVA": {
+            "x": 416,
+            "y": 68
+        },
+        "LBN": {
+            "x": 432,
+            "y": 114
+        },
+        "LSO": {
+            "x": 415,
+            "y": 237
+        },
+        "LBR": {
+            "x": 345,
+            "y": 166
+        },
+        "LBY": {
+            "x": 394,
+            "y": 125
+        },
+        "LIE": {
+            "x": 380,
+            "y": 81
+        },
+        "LTU": {
+            "x": 411,
+            "y": 69
+        },
+        "LUX": {
+            "x": 376,
+            "y": 80
+        },
+        "MDG": {
+            "x": 454,
+            "y": 219
+        },
+        "MWI": {
+            "x": 427,
+            "y": 205
+        },
+        "MYS": {
+            "x": 586,
+            "y": 177
+        },
+        "MDV": {
+            "x": 506,
+            "y": 169
+        },
+        "MLI": {
+            "x": 359,
+            "y": 145
+        },
+        "MLT": {
+            "x": 388,
+            "y": 105
+        },
+        "MHL": {
+            "x": 674,
+            "y": 196
+        },
+        "MRT": {
+            "x": 340,
+            "y": 149
+        },
+        "MUS": {
+            "x": 471,
+            "y": 222
+        },
+        "MEX": {
+            "x": 154,
+            "y": 127
+        },
+        "FSM": {
+            "x": 609,
+            "y": 164
+        },
+        "MDA": {
+            "x": 420,
+            "y": 84
+        },
+        "MCO": {
+            "x": 375,
+            "y": 91
+        },
+        "MNG": {
+            "x": 568,
+            "y": 97
+        },
+        "MNE": {
+            "x": 400,
+            "y": 96
+        },
+        "MAR": {
+            "x": 349,
+            "y": 117
+        },
+        "MOZ": {
+            "x": 427,
+            "y": 215
+        },
+        "MMR": {
+            "x": 551,
+            "y": 129
+        },
+        "NAM": {
+            "x": 395,
+            "y": 228
+        },
+        "NRU": {
+            "x": 660,
+            "y": 185
+        },
+        "NPL": {
+            "x": 527,
+            "y": 128
+        },
+        "NLD": {
+            "x": 368,
+            "y": 78
+        },
+        "NZL": {
+            "x": 704,
+            "y": 265
+        },
+        "NIC": {
+            "x": 187,
+            "y": 154
+        },
+        "NER": {
+            "x": 379,
+            "y": 152
+        },
+        "NGA": {
+            "x": 379,
+            "y": 160
+        },
+        "MKD": {
+            "x": 404,
+            "y": 94
+        },
+        "NOR": {
+            "x": 383,
+            "y": 53
+        },
+        "OMN": {
+            "x": 470,
+            "y": 139
+        },
+        "PAK": {
+            "x": 504,
+            "y": 125
+        },
+        "PLW": {
+            "x": 648,
+            "y": 183
+        },
+        "PAN": {
+            "x": 198,
+            "y": 163
+        },
+        "PNG": {
+            "x": 650,
+            "y": 193
+        },
+        "PRY": {
+            "x": 246,
+            "y": 222
+        },
+        "PER": {
+            "x": 215,
+            "y": 201
+        },
+        "PHL": {
+            "x": 603,
+            "y": 151
+        },
+        "POL": {
+            "x": 403,
+            "y": 76
+        },
+        "PRT": {
+            "x": 344,
+            "y": 102
+        },
+        "QAT": {
+            "x": 462,
+            "y": 132
+        },
+        "ROU": {
+            "x": 414,
+            "y": 93
+        },
+        "RUS": {
+            "x": 535,
+            "y": 55
+        },
+        "RWA": {
+            "x": 426,
+            "y": 189
+        },
+        "KNA": {
+            "x": 216,
+            "y": 136
+        },
+        "LCA": {
+            "x": 238,
+            "y": 152
+        },
+        "VCT": {
+            "x": 237,
+            "y": 155
+        },
+        "WSM": {
+            "x": 706,
+            "y": 178
+        },
+        "SMR": {
+            "x": 385,
+            "y": 92
+        },
+        "STP": {
+            "x": 377,
+            "y": 173
+        },
+        "SAU": {
+            "x": 450,
+            "y": 132
+        },
+        "SEN": {
+            "x": 330,
+            "y": 152
+        },
+        "SRB": {
+            "x": 416,
+            "y": 88
+        },
+        "SYC": {
+            "x": 458,
+            "y": 207
+        },
+        "SLE": {
+            "x": 335,
+            "y": 163
+        },
+        "SGP": {
+            "x": 565,
+            "y": 173
+        },
+        "SVK": {
+            "x": 398,
+            "y": 79
+        },
+        "SVN": {
+            "x": 384,
+            "y": 87
+        },
+        "SLB": {
+            "x": 662,
+            "y": 191
+        },
+        "SOM": {
+            "x": 454,
+            "y": 165
+        },
+        "ZAF": {
+            "x": 406,
+            "y": 235
+        },
+        "SSD": {
+            "x": 424,
+            "y": 163
+        },
+        "ESP": {
+            "x": 351,
+            "y": 99
+        },
+        "LKA": {
+            "x": 521,
+            "y": 165
+        },
+        "SDN": {
+            "x": 422,
+            "y": 143
+        },
+        "SUR": {
+            "x": 253,
+            "y": 173
+        },
+        "SWE": {
+            "x": 395,
+            "y": 52
+        },
+        "CHE": {
+            "x": 378,
+            "y": 86
+        },
+        "SYR": {
+            "x": 435,
+            "y": 109
+        },
+        "TJK": {
+            "x": 512,
+            "y": 110
+        },
+        "TZA": {
+            "x": 433,
+            "y": 199
+        },
+        "THA": {
+            "x": 561,
+            "y": 151
+        },
+        "TLS": {
+            "x": 612,
+            "y": 197
+        },
+        "TGO": {
+            "x": 360,
+            "y": 165
+        },
+        "TON": {
+            "x": 642,
+            "y": 323
+        },
+        "TTO": {
+            "x": 218,
+            "y": 340
+        },
+        "TUN": {
+            "x": 378,
+            "y": 110
+        },
+        "TUR": {
+            "x": 427,
+            "y": 102
+        },
+        "TKM": {
+            "x": 474,
+            "y": 100
+        },
+        "TUV": {
+            "x": 514,
+            "y": 330
+        },
+        "UGA": {
+            "x": 434,
+            "y": 178
+        },
+        "UKR": {
+            "x": 426,
+            "y": 79
+        },
+        "ARE": {
+            "x": 471,
+            "y": 131
+        },
+        "GBR": {
+            "x": 355,
+            "y": 71
+        },
+        "USA": {
+            "x": 165,
+            "y": 94
+        },
+        "URY": {
+            "x": 253,
+            "y": 238
+        },
+        "UZB": {
+            "x": 487,
+            "y": 103
+        },
+        "VUT": {
+            "x": 581,
+            "y": 348
+        },
+        "VEN": {
+            "x": 228,
+            "y": 170
+        },
+        "VNM": {
+            "x": 571,
+            "y": 139
+        },
+        "YEM": {
+            "x": 454,
+            "y": 145
+        },
+        "ZMB": {
+            "x": 412,
+            "y": 213
+        },
+        "ZWE": {
+            "x": 421,
+            "y": 222
+        },
+        "PSE": {
+            "x": 431,
+            "y": 120
+        },
+        "VAT": {
+            "x": 385,
+            "y": 95
+        }
+    };
+
+
+// -----------------------------
+// Biomes (rectangles) - host utility (paint by dragging)
+// -----------------------------
+// IDs are stable (safe for hardcoding).
+const BIOME_DEFS = [
+  { id: 1, key: 'PLAINS',    label: 'Plains',    rgb: [90, 170, 90] },
+  { id: 2, key: 'FOREST',    label: 'Forest',    rgb: [40, 130, 70] },
+  { id: 3, key: 'DESERT',    label: 'Desert',    rgb: [200, 180, 90] },
+  { id: 4, key: 'TUNDRA',    label: 'Tundra',    rgb: [170, 200, 210] },
+  { id: 5, key: 'JUNGLE',    label: 'Jungle',    rgb: [30, 110, 50] },
+  { id: 6, key: 'MOUNTAIN',  label: 'Mountain',  rgb: [150, 150, 160] },
+  { id: 7, key: 'SWAMP',     label: 'Swamp',     rgb: [90, 120, 80] }
+];
+const BIOME_BY_ID = new Map(BIOME_DEFS.map(b => [b.id, b]));
+const BIOME_BY_KEY = new Map(BIOME_DEFS.map(b => [b.key, b]));
+function biomeColorFor(id) {
+  const b = BIOME_BY_ID.get(id | 0);
+  return b ? b.rgb : null;
+}
+
+// Biome visualization
+const SHOW_BIOMES_ON_MAP = true; // set false to disable biome tint during play
+const BIOME_ALPHA_PLAY = 0.18;
+const BIOME_ALPHA_CONFIG = 0.35;
+
+// Optional hardcoded rectangles (paste here once you are ready).
+// Each rect is inclusive coords in grid-cells: x1,y1,x2,y2 (0..GW-1 / 0..GH-1)
+// Paste into index.html near BIOME_RECTS_HARDCODED
+const BIOME_RECTS_HARDCODED = [
+  { x1:0, y1:311, x2:718, y2:359, b:4 }, // TUNDRA
+  { x1:214, y1:299, x2:267, y2:315, b:4 }, // TUNDRA
+  { x1:327, y1:110, x2:418, y2:158, b:3 }, // DESERT
+  { x1:360, y1:105, x2:383, y2:110, b:3 }, // DESERT
+  { x1:422, y1:115, x2:460, y2:127, b:3 }, // DESERT
+  { x1:425, y1:128, x2:480, y2:134, b:3 }, // DESERT
+  { x1:427, y1:132, x2:480, y2:148, b:3 }, // DESERT
+  { x1:438, y1:147, x2:477, y2:154, b:3 }, // DESERT
+  { x1:419, y1:117, x2:421, y2:159, b:1 }, // PLAINS
+  { x1:421, y1:128, x2:424, y2:158, b:1 }, // PLAINS
+  { x1:425, y1:135, x2:426, y2:160, b:1 }, // PLAINS
+  { x1:426, y1:148, x2:437, y2:159, b:1 }, // PLAINS
+  { x1:458, y1:108, x2:487, y2:128, b:3 }, // DESERT
+  { x1:450, y1:105, x2:457, y2:115, b:3 }, // DESERT
+  { x1:454, y1:97, x2:454, y2:97, b:3 }, // DESERT
+  { x1:454, y1:97, x2:488, y2:110, b:3 }, // DESERT
+  { x1:465, y1:90, x2:492, y2:107, b:3 }, // DESERT
+  { x1:481, y1:84, x2:511, y2:98, b:3 }, // DESERT
+  { x1:528, y1:88, x2:554, y2:97, b:3 }, // DESERT
+  { x1:581, y1:215, x2:644, y2:253, b:3 }, // DESERT
+  { x1:120, y1:90, x2:127, y2:94, b:3 }, // DESERT
+  { x1:124, y1:94, x2:129, y2:99, b:3 }, // DESERT
+  { x1:126, y1:100, x2:139, y2:109, b:3 }, // DESERT
+  { x1:131, y1:88, x2:140, y2:90, b:3 }, // DESERT
+  { x1:139, y1:91, x2:145, y2:97, b:3 }, // DESERT
+  { x1:144, y1:101, x2:147, y2:109, b:3 }, // DESERT
+  { x1:144, y1:95, x2:147, y2:101, b:3 }, // DESERT
+  { x1:147, y1:105, x2:151, y2:118, b:3 }, // DESERT
+  { x1:146, y1:118, x2:149, y2:123, b:3 }, // DESERT
+  { x1:148, y1:119, x2:152, y2:126, b:3 }, // DESERT
+  { x1:134, y1:122, x2:146, y2:128, b:3 }, // DESERT
+  { x1:145, y1:128, x2:150, y2:134, b:3 }, // DESERT
+  { x1:206, y1:169, x2:255, y2:190, b:2 }, // FOREST
+  { x1:224, y1:166, x2:249, y2:167, b:2 }, // FOREST
+  { x1:249, y1:168, x2:249, y2:168, b:2 }, // FOREST
+  { x1:221, y1:184, x2:245, y2:201, b:2 }, // FOREST
+  { x1:228, y1:184, x2:252, y2:213, b:2 }, // FOREST
+  { x1:206, y1:179, x2:223, y2:195, b:2 }, // FOREST
+  { x1:217, y1:195, x2:227, y2:201, b:2 }, // FOREST
+  { x1:204, y1:196, x2:226, y2:205, b:2 }, // FOREST
+  { x1:218, y1:162, x2:230, y2:166, b:2 }, // FOREST
+  { x1:264, y1:199, x2:280, y2:224, b:2 }, // FOREST
+  { x1:280, y1:192, x2:287, y2:199, b:2 }, // FOREST
+  { x1:254, y1:220, x2:272, y2:232, b:2 }, // FOREST
+  { x1:229, y1:213, x2:233, y2:247, b:2 }, // FOREST
+  { x1:223, y1:246, x2:230, y2:266, b:2 }, // FOREST
+  { x1:342, y1:59, x2:462, y2:86, b:2 }, // FOREST
+  { x1:397, y1:48, x2:476, y2:63, b:2 }, // FOREST
+  { x1:455, y1:62, x2:511, y2:71, b:2 }, // FOREST
+  { x1:466, y1:69, x2:496, y2:79, b:2 }, // FOREST
+  { x1:498, y1:75, x2:538, y2:76, b:2 }, // FOREST
+  { x1:453, y1:69, x2:499, y2:83, b:2 }, // FOREST
+  { x1:448, y1:83, x2:481, y2:88, b:2 }, // FOREST
+  { x1:500, y1:77, x2:546, y2:82, b:2 }, // FOREST
+  { x1:497, y1:64, x2:560, y2:75, b:2 }, // FOREST
+  { x1:544, y1:73, x2:572, y2:79, b:2 }, // FOREST
+  { x1:478, y1:60, x2:697, y2:88, b:2 }, // FOREST
+  { x1:614, y1:83, x2:682, y2:103, b:2 }, // FOREST
+  { x1:589, y1:75, x2:681, y2:116, b:2 }, // FOREST
+  { x1:597, y1:111, x2:609, y2:131, b:2 }, // FOREST
+  { x1:592, y1:112, x2:605, y2:141, b:2 }, // FOREST
+  { x1:554, y1:140, x2:619, y2:194, b:2 }, // FOREST
+  { x1:537, y1:165, x2:712, y2:201, b:2 }, // FOREST
+  { x1:658, y1:192, x2:716, y2:230, b:2 }, // FOREST
+  { x1:90, y1:73, x2:263, y2:86, b:2 }, // FOREST
+  { x1:151, y1:86, x2:239, y2:93, b:2 }, // FOREST
+  { x1:137, y1:86, x2:170, y2:87, b:2 }, // FOREST
+  { x1:144, y1:88, x2:155, y2:91, b:2 }, // FOREST
+  { x1:181, y1:85, x2:226, y2:97, b:2 }, // FOREST
+  { x1:179, y1:89, x2:229, y2:138, b:2 }, // FOREST
+  { x1:112, y1:83, x2:116, y2:124, b:2 }, // FOREST
+  { x1:116, y1:89, x2:120, y2:118, b:2 }, // FOREST
+  { x1:126, y1:85, x2:130, y2:91, b:2 }, // FOREST
+  { x1:130, y1:92, x2:135, y2:95, b:2 }, // FOREST
+  { x1:132, y1:96, x2:137, y2:97, b:2 }, // FOREST
+  { x1:131, y1:93, x2:134, y2:98, b:2 }, // FOREST
+  { x1:135, y1:92, x2:138, y2:97, b:2 }, // FOREST
+  { x1:129, y1:91, x2:138, y2:93, b:2 }, // FOREST
+  { x1:130, y1:95, x2:138, y2:99, b:2 }, // FOREST
+  { x1:128, y1:92, x2:128, y2:93, b:2 }, // FOREST
+  { x1:138, y1:98, x2:143, y2:99, b:2 }, // FOREST
+  { x1:140, y1:100, x2:143, y2:109, b:2 }, // FOREST
+  { x1:120, y1:95, x2:123, y2:111, b:2 }, // FOREST
+  { x1:123, y1:100, x2:125, y2:111, b:2 }, // FOREST
+  { x1:332, y1:158, x2:390, y2:227, b:2 }, // FOREST
+  { x1:385, y1:174, x2:410, y2:202, b:2 }, // FOREST
+  { x1:452, y1:208, x2:468, y2:226, b:2 }, // FOREST
+  { x1:446, y1:205, x2:463, y2:215, b:2 }, // FOREST
+  { x1:145, y1:88, x2:165, y2:93, b:1 }, // PLAINS
+  { x1:152, y1:94, x2:178, y2:119, b:1 }, // PLAINS
+  { x1:146, y1:94, x2:151, y2:94, b:1 }, // PLAINS
+  { x1:148, y1:95, x2:151, y2:97, b:1 }, // PLAINS
+  { x1:148, y1:99, x2:148, y2:99, b:1 }, // PLAINS
+  { x1:149, y1:98, x2:149, y2:98, b:1 }, // PLAINS
+  { x1:149, y1:98, x2:149, y2:98, b:1 }, // PLAINS
+  { x1:148, y1:98, x2:148, y2:98, b:1 }, // PLAINS
+  { x1:150, y1:99, x2:150, y2:99, b:1 }, // PLAINS
+  { x1:149, y1:99, x2:149, y2:99, b:1 }, // PLAINS
+  { x1:150, y1:98, x2:151, y2:99, b:1 }, // PLAINS
+  { x1:148, y1:100, x2:151, y2:104, b:1 }, // PLAINS
+  { x1:143, y1:90, x2:143, y2:90, b:1 }, // PLAINS
+  { x1:141, y1:90, x2:141, y2:90, b:1 }, // PLAINS
+  { x1:141, y1:89, x2:141, y2:89, b:1 }, // PLAINS
+  { x1:142, y1:89, x2:142, y2:89, b:1 }, // PLAINS
+  { x1:142, y1:88, x2:142, y2:90, b:1 }, // PLAINS
+  { x1:141, y1:88, x2:141, y2:88, b:1 }, // PLAINS
+  { x1:142, y1:88, x2:142, y2:88, b:1 }, // PLAINS
+  { x1:143, y1:88, x2:143, y2:88, b:1 }, // PLAINS
+  { x1:143, y1:89, x2:143, y2:89, b:1 }, // PLAINS
+  { x1:130, y1:87, x2:135, y2:87, b:1 }, // PLAINS
+  { x1:136, y1:87, x2:136, y2:87, b:1 }, // PLAINS
+  { x1:117, y1:87, x2:125, y2:88, b:1 }, // PLAINS
+  { x1:121, y1:89, x2:125, y2:89, b:1 }, // PLAINS
+  { x1:126, y1:110, x2:127, y2:111, b:1 }, // PLAINS
+  { x1:127, y1:111, x2:146, y2:116, b:1 }, // PLAINS
+  { x1:128, y1:110, x2:146, y2:110, b:1 }, // PLAINS
+  { x1:124, y1:112, x2:146, y2:117, b:1 }, // PLAINS
+  { x1:134, y1:118, x2:145, y2:121, b:1 }, // PLAINS
+  { x1:128, y1:118, x2:133, y2:126, b:1 }, // PLAINS
+  { x1:123, y1:113, x2:123, y2:115, b:1 }, // PLAINS
+  { x1:136, y1:129, x2:141, y2:134, b:1 }, // PLAINS
+  { x1:142, y1:129, x2:144, y2:130, b:1 }, // PLAINS
+  { x1:264, y1:187, x2:278, y2:194, b:3 }, // DESERT
+  { x1:265, y1:193, x2:279, y2:197, b:3 }, // DESERT
+  { x1:263, y1:193, x2:268, y2:196, b:3 }, // DESERT
+  { x1:256, y1:169, x2:275, y2:186, b:1 }, // PLAINS
+  { x1:275, y1:186, x2:281, y2:186, b:1 }, // PLAINS
+  { x1:279, y1:186, x2:286, y2:191, b:1 }, // PLAINS
+  { x1:279, y1:192, x2:279, y2:192, b:1 }, // PLAINS
+  { x1:287, y1:190, x2:290, y2:191, b:1 }, // PLAINS
+  { x1:288, y1:192, x2:291, y2:200, b:1 }, // PLAINS
+  { x1:281, y1:200, x2:287, y2:216, b:1 }, // PLAINS
+  { x1:265, y1:198, x2:279, y2:198, b:1 }, // PLAINS
+  { x1:252, y1:197, x2:264, y2:198, b:1 }, // PLAINS
+  { x1:256, y1:187, x2:263, y2:192, b:1 }, // PLAINS
+  { x1:253, y1:191, x2:262, y2:203, b:1 }, // PLAINS
+  { x1:263, y1:199, x2:263, y2:205, b:1 }, // PLAINS
+  { x1:253, y1:215, x2:253, y2:215, b:1 }, // PLAINS
+  { x1:253, y1:204, x2:263, y2:219, b:1 }, // PLAINS
+  { x1:234, y1:214, x2:253, y2:243, b:1 }, // PLAINS
+  { x1:234, y1:244, x2:256, y2:261, b:1 }, // PLAINS
+  { x1:231, y1:248, x2:241, y2:276, b:1 }, // PLAINS
+  { x1:254, y1:233, x2:266, y2:242, b:1 }, // PLAINS
+  { x1:208, y1:265, x2:222, y2:267, b:1 }, // PLAINS
+  { x1:223, y1:267, x2:226, y2:284, b:1 }, // PLAINS
+  { x1:226, y1:284, x2:232, y2:286, b:1 }, // PLAINS
+  { x1:226, y1:267, x2:234, y2:286, b:1 }, // PLAINS
+  { x1:229, y1:275, x2:248, y2:286, b:1 }, // PLAINS
+  { x1:206, y1:268, x2:247, y2:303, b:1 }, // PLAINS
+  { x1:208, y1:206, x2:227, y2:247, b:1 }, // PLAINS
+  { x1:225, y1:202, x2:227, y2:228, b:1 }, // PLAINS
+  { x1:225, y1:228, x2:226, y2:236, b:1 }, // PLAINS
+  { x1:227, y1:214, x2:228, y2:245, b:1 }, // PLAINS
+  { x1:216, y1:248, x2:222, y2:264, b:1 }, // PLAINS
+  { x1:209, y1:249, x2:217, y2:269, b:1 }, // PLAINS
+  { x1:140, y1:143, x2:209, y2:166, b:1 }, // PLAINS
+  { x1:169, y1:133, x2:188, y2:149, b:1 }, // PLAINS
+  { x1:207, y1:156, x2:217, y2:168, b:1 }, // PLAINS
+  { x1:218, y1:158, x2:218, y2:161, b:1 }, // PLAINS
+  { x1:219, y1:158, x2:219, y2:160, b:1 }, // PLAINS
+  { x1:219, y1:158, x2:220, y2:161, b:1 }, // PLAINS
+  { x1:218, y1:154, x2:229, y2:161, b:1 }, // PLAINS
+  { x1:218, y1:167, x2:223, y2:168, b:1 }, // PLAINS
+  { x1:224, y1:168, x2:251, y2:168, b:1 }, // PLAINS
+  { x1:231, y1:158, x2:242, y2:165, b:1 }, // PLAINS
+  { x1:230, y1:161, x2:230, y2:161, b:1 }, // PLAINS
+  { x1:230, y1:160, x2:230, y2:160, b:1 }, // PLAINS
+  { x1:237, y1:159, x2:237, y2:159, b:1 }, // PLAINS
+  { x1:237, y1:155, x2:237, y2:155, b:1 }, // PLAINS
+  { x1:238, y1:153, x2:238, y2:153, b:1 }, // PLAINS
+  { x1:238, y1:153, x2:238, y2:153, b:1 }, // PLAINS
+  { x1:238, y1:152, x2:238, y2:152, b:1 }, // PLAINS
+  { x1:238, y1:152, x2:238, y2:152, b:1 }, // PLAINS
+  { x1:238, y1:151, x2:238, y2:151, b:1 }, // PLAINS
+  { x1:237, y1:148, x2:237, y2:148, b:1 }, // PLAINS
+  { x1:237, y1:149, x2:237, y2:149, b:1 }, // PLAINS
+  { x1:237, y1:148, x2:237, y2:148, b:1 }, // PLAINS
+  { x1:237, y1:147, x2:237, y2:147, b:1 }, // PLAINS
+  { x1:215, y1:140, x2:215, y2:141, b:1 }, // PLAINS
+  { x1:215, y1:141, x2:234, y2:145, b:1 }, // PLAINS
+  { x1:205, y1:139, x2:206, y2:140, b:1 }, // PLAINS
+  { x1:207, y1:139, x2:210, y2:140, b:1 }, // PLAINS
+  { x1:204, y1:139, x2:204, y2:139, b:1 }, // PLAINS
+  { x1:212, y1:143, x2:212, y2:143, b:1 }, // PLAINS
+  { x1:213, y1:143, x2:213, y2:143, b:1 }, // PLAINS
+  { x1:147, y1:124, x2:147, y2:127, b:1 }, // PLAINS
+  { x1:148, y1:127, x2:153, y2:127, b:1 }, // PLAINS
+  { x1:153, y1:120, x2:178, y2:131, b:1 }, // PLAINS
+  { x1:151, y1:127, x2:169, y2:142, b:1 }, // PLAINS
+  { x1:148, y1:135, x2:150, y2:141, b:1 }, // PLAINS
+  { x1:147, y1:136, x2:147, y2:136, b:1 }, // PLAINS
+  { x1:344, y1:86, x2:399, y2:108, b:1 }, // PLAINS
+  { x1:341, y1:91, x2:351, y2:109, b:1 }, // PLAINS
+  { x1:358, y1:109, x2:358, y2:109, b:1 }, // PLAINS
+  { x1:359, y1:109, x2:359, y2:109, b:1 }, // PLAINS
+  { x1:397, y1:86, x2:449, y2:114, b:1 }, // PLAINS
+  { x1:450, y1:89, x2:453, y2:104, b:1 }, // PLAINS
+  { x1:453, y1:88, x2:464, y2:96, b:1 }, // PLAINS
+  { x1:465, y1:89, x2:481, y2:89, b:1 }, // PLAINS
+  { x1:331, y1:158, x2:367, y2:159, b:1 }, // PLAINS
+  { x1:368, y1:158, x2:375, y2:160, b:1 }, // PLAINS
+  { x1:375, y1:160, x2:382, y2:161, b:1 }, // PLAINS
+  { x1:375, y1:158, x2:395, y2:161, b:1 }, // PLAINS
+  { x1:395, y1:161, x2:415, y2:164, b:1 }, // PLAINS
+  { x1:389, y1:162, x2:410, y2:166, b:1 }, // PLAINS
+  { x1:396, y1:158, x2:422, y2:167, b:1 }, // PLAINS
+  { x1:422, y1:162, x2:446, y2:167, b:1 }, // PLAINS
+  { x1:428, y1:155, x2:462, y2:170, b:1 }, // PLAINS
+  { x1:421, y1:159, x2:429, y2:162, b:1 }, // PLAINS
+  { x1:411, y1:167, x2:458, y2:179, b:1 }, // PLAINS
+  { x1:391, y1:166, x2:413, y2:168, b:1 }, // PLAINS
+  { x1:391, y1:168, x2:416, y2:173, b:1 }, // PLAINS
+  { x1:410, y1:178, x2:453, y2:204, b:1 }, // PLAINS
+  { x1:423, y1:203, x2:442, y2:235, b:1 }, // PLAINS
+  { x1:391, y1:202, x2:425, y2:211, b:1 }, // PLAINS
+  { x1:390, y1:210, x2:420, y2:212, b:1 }, // PLAINS
+  { x1:409, y1:210, x2:428, y2:217, b:1 }, // PLAINS
+  { x1:411, y1:223, x2:429, y2:259, b:1 }, // PLAINS
+  { x1:391, y1:213, x2:410, y2:253, b:3 }, // DESERT
+  { x1:411, y1:230, x2:411, y2:252, b:3 }, // DESERT
+  { x1:413, y1:233, x2:413, y2:266, b:3 }, // DESERT
+  { x1:410, y1:234, x2:412, y2:282, b:3 }, // DESERT
+  { x1:407, y1:237, x2:414, y2:266, b:3 }, // DESERT
+  { x1:377, y1:259, x2:377, y2:259, b:3 }, // DESERT
+  { x1:387, y1:229, x2:399, y2:253, b:3 }, // DESERT
+  { x1:386, y1:228, x2:412, y2:241, b:3 }, // DESERT
+  { x1:411, y1:218, x2:422, y2:223, b:1 }, // PLAINS
+  { x1:448, y1:216, x2:452, y2:233, b:1 }, // PLAINS
+  { x1:447, y1:223, x2:447, y2:241, b:1 }, // PLAINS
+  { x1:450, y1:227, x2:457, y2:235, b:1 }, // PLAINS
+  { x1:482, y1:228, x2:482, y2:228, b:1 }, // PLAINS
+  { x1:469, y1:219, x2:481, y2:225, b:1 }, // PLAINS
+  { x1:700, y1:234, x2:717, y2:277, b:2 }, // FOREST
+  { x1:686, y1:252, x2:699, y2:273, b:2 }, // FOREST
+  { x1:638, y1:266, x2:679, y2:268, b:2 }, // FOREST
+  { x1:631, y1:261, x2:715, y2:288, b:2 }, // FOREST
+  { x1:663, y1:253, x2:663, y2:253, b:2 }, // FOREST
+  { x1:637, y1:253, x2:665, y2:260, b:2 }, // FOREST
+  { x1:655, y1:248, x2:661, y2:252, b:2 }, // FOREST
+  { x1:661, y1:238, x2:664, y2:247, b:2 }, // FOREST
+  { x1:664, y1:230, x2:670, y2:238, b:2 }, // FOREST
+  { x1:662, y1:226, x2:662, y2:246, b:2 }, // FOREST
+  { x1:666, y1:236, x2:674, y2:253, b:2 }, // FOREST
+  { x1:659, y1:230, x2:668, y2:239, b:2 }, // FOREST
+  { x1:666, y1:240, x2:670, y2:260, b:2 }, // FOREST
+  { x1:658, y1:210, x2:664, y2:231, b:2 }, // FOREST
+  { x1:654, y1:206, x2:656, y2:226, b:2 }, // FOREST
+  { x1:657, y1:226, x2:658, y2:226, b:2 }, // FOREST
+  { x1:647, y1:206, x2:658, y2:226, b:2 }, // FOREST
+  { x1:641, y1:205, x2:664, y2:210, b:2 }, // FOREST
+  { x1:632, y1:196, x2:646, y2:202, b:2 }, // FOREST
+  { x1:594, y1:200, x2:654, y2:200, b:2 }, // FOREST
+  { x1:607, y1:203, x2:655, y2:203, b:2 }, // FOREST
+  { x1:638, y1:211, x2:638, y2:211, b:2 }, // FOREST
+  { x1:606, y1:205, x2:639, y2:212, b:2 }, // FOREST
+  { x1:609, y1:206, x2:646, y2:214, b:1 }, // PLAINS
+  { x1:604, y1:213, x2:635, y2:215, b:1 }, // PLAINS
+  { x1:627, y1:215, x2:639, y2:215, b:1 }, // PLAINS
+  { x1:634, y1:214, x2:638, y2:214, b:1 }, // PLAINS
+  { x1:633, y1:216, x2:635, y2:217, b:1 }, // PLAINS
+  { x1:636, y1:217, x2:649, y2:221, b:1 }, // PLAINS
+  { x1:638, y1:215, x2:647, y2:217, b:1 }, // PLAINS
+  { x1:635, y1:215, x2:637, y2:215, b:1 }, // PLAINS
+  { x1:634, y1:215, x2:644, y2:221, b:1 }, // PLAINS
+  { x1:647, y1:221, x2:652, y2:240, b:1 }, // PLAINS
+  { x1:645, y1:222, x2:647, y2:252, b:1 }, // PLAINS
+  { x1:649, y1:237, x2:650, y2:252, b:1 }, // PLAINS
+  { x1:646, y1:226, x2:656, y2:242, b:1 }, // PLAINS
+  { x1:655, y1:228, x2:659, y2:240, b:1 }, // PLAINS
+  { x1:656, y1:238, x2:656, y2:256, b:1 }, // PLAINS
+  { x1:653, y1:242, x2:653, y2:255, b:1 }, // PLAINS
+  { x1:647, y1:242, x2:660, y2:249, b:1 }, // PLAINS
+  { x1:657, y1:240, x2:658, y2:240, b:1 }, // PLAINS
+  { x1:659, y1:241, x2:659, y2:243, b:1 }, // PLAINS
+  { x1:657, y1:240, x2:658, y2:242, b:1 }, // PLAINS
+  { x1:659, y1:239, x2:660, y2:242, b:1 }, // PLAINS
+  { x1:646, y1:249, x2:655, y2:249, b:1 }, // PLAINS
+  { x1:649, y1:250, x2:654, y2:252, b:1 }, // PLAINS
+  { x1:647, y1:250, x2:648, y2:250, b:1 }, // PLAINS
+  { x1:650, y1:253, x2:650, y2:253, b:1 }, // PLAINS
+  { x1:650, y1:253, x2:650, y2:253, b:1 }, // PLAINS
+  { x1:649, y1:252, x2:649, y2:252, b:1 }, // PLAINS
+  { x1:649, y1:252, x2:649, y2:252, b:1 }, // PLAINS
+  { x1:649, y1:252, x2:649, y2:252, b:1 }, // PLAINS
+  { x1:649, y1:252, x2:649, y2:252, b:1 }, // PLAINS
+  { x1:648, y1:251, x2:648, y2:251, b:1 }, // PLAINS
+  { x1:648, y1:251, x2:648, y2:251, b:1 }, // PLAINS
+  { x1:648, y1:253, x2:648, y2:253, b:1 }, // PLAINS
+  { x1:648, y1:252, x2:648, y2:252, b:1 }, // PLAINS
+  { x1:621, y1:202, x2:633, y2:204, b:1 }, // PLAINS
+  { x1:644, y1:204, x2:647, y2:204, b:1 }, // PLAINS
+  { x1:514, y1:92, x2:525, y2:108, b:1 }, // PLAINS
+  { x1:513, y1:89, x2:525, y2:109, b:1 }, // PLAINS
+  { x1:474, y1:84, x2:529, y2:89, b:1 }, // PLAINS
+  { x1:512, y1:89, x2:527, y2:113, b:1 }, // PLAINS
+  { x1:493, y1:98, x2:538, y2:172, b:1 }, // PLAINS
+  { x1:488, y1:108, x2:492, y2:112, b:1 }, // PLAINS
+  { x1:489, y1:112, x2:503, y2:205, b:1 }, // PLAINS
+  { x1:488, y1:113, x2:488, y2:129, b:1 }, // PLAINS
+  { x1:481, y1:129, x2:487, y2:129, b:1 }, // PLAINS
+  { x1:515, y1:142, x2:523, y2:150, b:2 }, // FOREST
+  { x1:521, y1:135, x2:522, y2:140, b:2 }, // FOREST
+  { x1:525, y1:135, x2:525, y2:143, b:2 }, // FOREST
+  { x1:521, y1:138, x2:524, y2:155, b:2 }, // FOREST
+  { x1:520, y1:137, x2:528, y2:147, b:2 }, // FOREST
+  { x1:519, y1:140, x2:519, y2:147, b:2 }, // FOREST
+  { x1:510, y1:135, x2:510, y2:143, b:3 }, // DESERT
+  { x1:510, y1:137, x2:510, y2:142, b:3 }, // DESERT
+  { x1:513, y1:142, x2:513, y2:142, b:3 }, // DESERT
+  { x1:512, y1:141, x2:512, y2:146, b:3 }, // DESERT
+  { x1:511, y1:140, x2:511, y2:150, b:3 }, // DESERT
+  { x1:512, y1:143, x2:512, y2:147, b:3 }, // DESERT
+  { x1:512, y1:143, x2:512, y2:149, b:3 }, // DESERT
+  { x1:511, y1:137, x2:511, y2:146, b:3 }, // DESERT
+  { x1:509, y1:140, x2:509, y2:151, b:3 }, // DESERT
+  { x1:510, y1:143, x2:510, y2:154, b:3 }, // DESERT
+  { x1:537, y1:99, x2:568, y2:137, b:1 }, // PLAINS
+  { x1:539, y1:98, x2:584, y2:99, b:1 }, // PLAINS
+  { x1:557, y1:89, x2:573, y2:120, b:1 }, // PLAINS
+  { x1:555, y1:89, x2:556, y2:114, b:1 }, // PLAINS
+  { x1:574, y1:89, x2:589, y2:137, b:1 }, // PLAINS
+  { x1:590, y1:117, x2:591, y2:137, b:1 }, // PLAINS
+  { x1:567, y1:119, x2:576, y2:139, b:1 }, // PLAINS
+  { x1:542, y1:137, x2:565, y2:139, b:1 }, // PLAINS
+  { x1:580, y1:138, x2:581, y2:139, b:1 }, // PLAINS
+  { x1:566, y1:138, x2:566, y2:139, b:1 }, // PLAINS
+  { x1:543, y1:139, x2:553, y2:148, b:1 }, // PLAINS
+  { x1:96, y1:318, x2:195, y2:349, b:4 }, // TUNDRA
+  { x1:403, y1:89, x2:405, y2:89, b:6 }, // MOUNTAIN
+  { x1:401, y1:89, x2:407, y2:93, b:6 }, // MOUNTAIN
+  { x1:426, y1:98, x2:431, y2:99, b:6 }, // MOUNTAIN
+  { x1:429, y1:101, x2:432, y2:101, b:6 }, // MOUNTAIN
+  { x1:380, y1:88, x2:380, y2:88, b:6 }, // MOUNTAIN
+  { x1:362, y1:88, x2:367, y2:89, b:6 }, // MOUNTAIN
+  { x1:358, y1:92, x2:363, y2:94, b:6 }, // MOUNTAIN
+  { x1:378, y1:77, x2:387, y2:77, b:6 }, // MOUNTAIN
+  { x1:469, y1:49, x2:521, y2:49, b:6 }, // MOUNTAIN
+  { x1:474, y1:64, x2:478, y2:64, b:6 }, // MOUNTAIN
+  { x1:500, y1:68, x2:511, y2:68, b:6 }, // MOUNTAIN
+  { x1:514, y1:72, x2:517, y2:72, b:6 }, // MOUNTAIN
+  { x1:523, y1:72, x2:523, y2:72, b:6 }, // MOUNTAIN
+  { x1:531, y1:69, x2:538, y2:71, b:6 }, // MOUNTAIN
+  { x1:540, y1:74, x2:548, y2:76, b:6 }, // MOUNTAIN
+  { x1:548, y1:76, x2:548, y2:76, b:6 }, // MOUNTAIN
+  { x1:556, y1:70, x2:558, y2:70, b:6 }, // MOUNTAIN
+  { x1:553, y1:78, x2:557, y2:79, b:6 }, // MOUNTAIN
+  { x1:474, y1:73, x2:474, y2:73, b:6 }, // MOUNTAIN
+  { x1:491, y1:73, x2:492, y2:73, b:6 }, // MOUNTAIN
+  { x1:473, y1:71, x2:473, y2:71, b:6 }, // MOUNTAIN
+  { x1:453, y1:71, x2:453, y2:71, b:6 }, // MOUNTAIN
+  { x1:453, y1:77, x2:453, y2:77, b:6 }, // MOUNTAIN
+  { x1:457, y1:52, x2:457, y2:52, b:6 }, // MOUNTAIN
+  { x1:458, y1:77, x2:458, y2:77, b:6 }, // MOUNTAIN
+  { x1:437, y1:77, x2:437, y2:77, b:6 }, // MOUNTAIN
+  { x1:462, y1:64, x2:462, y2:64, b:6 }, // MOUNTAIN
+  { x1:445, y1:69, x2:445, y2:69, b:6 }, // MOUNTAIN
+  { x1:421, y1:68, x2:421, y2:68, b:6 }, // MOUNTAIN
+  { x1:421, y1:73, x2:421, y2:73, b:6 }, // MOUNTAIN
+  { x1:446, y1:69, x2:446, y2:69, b:6 }, // MOUNTAIN
+  { x1:446, y1:69, x2:446, y2:69, b:6 }, // MOUNTAIN
+  { x1:461, y1:67, x2:461, y2:67, b:6 }, // MOUNTAIN
+  { x1:461, y1:67, x2:461, y2:67, b:6 }, // MOUNTAIN
+  { x1:461, y1:67, x2:461, y2:67, b:6 }, // MOUNTAIN
+  { x1:461, y1:67, x2:461, y2:67, b:6 }, // MOUNTAIN
+  { x1:463, y1:67, x2:463, y2:67, b:6 }, // MOUNTAIN
+  { x1:463, y1:67, x2:463, y2:67, b:6 }, // MOUNTAIN
+  { x1:467, y1:67, x2:467, y2:67, b:6 }, // MOUNTAIN
+  { x1:467, y1:67, x2:467, y2:67, b:6 }, // MOUNTAIN
+  { x1:460, y1:66, x2:460, y2:66, b:6 }, // MOUNTAIN
+  { x1:463, y1:65, x2:468, y2:68, b:6 }, // MOUNTAIN
+  { x1:455, y1:64, x2:459, y2:65, b:6 }, // MOUNTAIN
+  { x1:425, y1:62, x2:428, y2:62, b:6 }, // MOUNTAIN
+  { x1:440, y1:61, x2:453, y2:61, b:6 }, // MOUNTAIN
+  { x1:447, y1:61, x2:449, y2:61, b:6 }, // MOUNTAIN
+  { x1:456, y1:62, x2:472, y2:63, b:6 }, // MOUNTAIN
+  { x1:455, y1:55, x2:465, y2:57, b:6 }, // MOUNTAIN
+  { x1:471, y1:61, x2:495, y2:67, b:6 }, // MOUNTAIN
+  { x1:456, y1:57, x2:474, y2:57, b:6 }, // MOUNTAIN
+  { x1:517, y1:71, x2:535, y2:71, b:6 }, // MOUNTAIN
+  { x1:588, y1:76, x2:598, y2:76, b:6 }, // MOUNTAIN
+  { x1:570, y1:75, x2:601, y2:75, b:6 }, // MOUNTAIN
+  { x1:570, y1:75, x2:570, y2:75, b:6 }, // MOUNTAIN
+  { x1:560, y1:72, x2:586, y2:72, b:6 }, // MOUNTAIN
+  { x1:517, y1:89, x2:519, y2:89, b:6 }, // MOUNTAIN
+  { x1:519, y1:104, x2:520, y2:104, b:6 }, // MOUNTAIN
+  { x1:502, y1:118, x2:506, y2:118, b:6 }, // MOUNTAIN
+  { x1:520, y1:118, x2:540, y2:118, b:6 }, // MOUNTAIN
+  { x1:544, y1:114, x2:563, y2:114, b:6 }, // MOUNTAIN
+  { x1:563, y1:111, x2:566, y2:113, b:6 }, // MOUNTAIN
+  { x1:566, y1:115, x2:566, y2:119, b:6 }, // MOUNTAIN
+  { x1:553, y1:105, x2:560, y2:107, b:6 }, // MOUNTAIN
+  { x1:515, y1:104, x2:533, y2:105, b:6 }, // MOUNTAIN
+  { x1:502, y1:106, x2:510, y2:106, b:6 }, // MOUNTAIN
+  { x1:558, y1:127, x2:565, y2:127, b:6 }, // MOUNTAIN
+  { x1:540, y1:124, x2:541, y2:124, b:6 }, // MOUNTAIN
+  { x1:545, y1:126, x2:557, y2:131, b:6 }, // MOUNTAIN
+  { x1:579, y1:110, x2:586, y2:116, b:6 }, // MOUNTAIN
+  { x1:573, y1:101, x2:573, y2:101, b:6 }, // MOUNTAIN
+  { x1:581, y1:104, x2:583, y2:105, b:6 }, // MOUNTAIN
+  { x1:494, y1:127, x2:495, y2:127, b:7 }, // SWAMP
+  { x1:499, y1:125, x2:502, y2:135, b:7 }, // SWAMP
+  { x1:497, y1:131, x2:497, y2:131, b:7 }, // SWAMP
+  { x1:514, y1:132, x2:519, y2:132, b:7 }, // SWAMP
+  { x1:546, y1:137, x2:555, y2:137, b:7 }, // SWAMP
+  { x1:546, y1:149, x2:547, y2:161, b:7 }, // SWAMP
+  { x1:545, y1:153, x2:545, y2:163, b:7 }, // SWAMP
+  { x1:376, y1:168, x2:379, y2:174, b:7 }, // SWAMP
+  { x1:384, y1:182, x2:385, y2:182, b:7 }, // SWAMP
+  { x1:231, y1:182, x2:233, y2:182, b:7 }, // SWAMP
+  { x1:216, y1:182, x2:220, y2:187, b:7 }, // SWAMP
+  { x1:197, y1:178, x2:203, y2:207, b:7 }, // SWAMP
+  { x1:200, y1:173, x2:205, y2:198, b:7 }, // SWAMP
+  { x1:247, y1:138, x2:247, y2:138, b:7 }, // SWAMP
+  { x1:194, y1:135, x2:195, y2:135, b:7 }, // SWAMP
+  { x1:198, y1:121, x2:198, y2:122, b:7 }, // SWAMP
+  { x1:195, y1:118, x2:195, y2:122, b:7 }, // SWAMP
+  { x1:200, y1:104, x2:206, y2:107, b:7 }, // SWAMP
+  { x1:208, y1:95, x2:218, y2:96, b:7 }, // SWAMP
+  { x1:223, y1:91, x2:230, y2:95, b:7 }, // SWAMP
+  { x1:219, y1:85, x2:222, y2:87, b:7 }, // SWAMP
+  { x1:215, y1:87, x2:216, y2:88, b:7 }, // SWAMP
+  { x1:210, y1:86, x2:215, y2:87, b:7 }, // SWAMP
+  { x1:227, y1:83, x2:228, y2:114, b:7 }, // SWAMP
+  { x1:247, y1:82, x2:260, y2:107, b:7 }, // SWAMP
+  { x1:211, y1:101, x2:234, y2:117, b:7 }, // SWAMP
+  { x1:185, y1:85, x2:186, y2:85, b:7 }, // SWAMP
+  { x1:183, y1:81, x2:188, y2:82, b:7 }, // SWAMP
+  { x1:199, y1:82, x2:202, y2:82, b:6 }, // MOUNTAIN
+  { x1:208, y1:78, x2:212, y2:78, b:6 }, // MOUNTAIN
+  { x1:194, y1:90, x2:197, y2:100, b:6 }, // MOUNTAIN
+  { x1:181, y1:83, x2:183, y2:86, b:6 }, // MOUNTAIN
+  { x1:176, y1:86, x2:177, y2:86, b:6 }, // MOUNTAIN
+  { x1:173, y1:75, x2:176, y2:78, b:6 }, // MOUNTAIN
+  { x1:183, y1:106, x2:190, y2:106, b:5 }, // JUNGLE
+  { x1:182, y1:94, x2:183, y2:99, b:5 }, // JUNGLE
+  { x1:185, y1:97, x2:186, y2:101, b:5 }, // JUNGLE
+  { x1:182, y1:104, x2:186, y2:107, b:5 }, // JUNGLE
+  { x1:183, y1:99, x2:188, y2:108, b:5 }, // JUNGLE
+  { x1:189, y1:109, x2:196, y2:120, b:5 }, // JUNGLE
+  { x1:187, y1:102, x2:200, y2:111, b:5 }, // JUNGLE
+  { x1:158, y1:135, x2:169, y2:145, b:5 }, // JUNGLE
+  { x1:158, y1:128, x2:159, y2:128, b:5 }, // JUNGLE
+  { x1:159, y1:128, x2:165, y2:135, b:5 }, // JUNGLE
+  { x1:222, y1:180, x2:243, y2:183, b:5 }, // JUNGLE
+  { x1:224, y1:171, x2:242, y2:182, b:5 }, // JUNGLE
+  { x1:235, y1:186, x2:240, y2:197, b:5 }, // JUNGLE
+  { x1:345, y1:164, x2:357, y2:169, b:5 }, // JUNGLE
+  { x1:407, y1:63, x2:420, y2:72, b:5 }, // JUNGLE
+  { x1:399, y1:74, x2:408, y2:74, b:5 }, // JUNGLE
+  { x1:396, y1:69, x2:408, y2:80, b:5 }, // JUNGLE
+  { x1:505, y1:83, x2:523, y2:87, b:5 }, // JUNGLE
+  { x1:562, y1:86, x2:575, y2:88, b:5 }, // JUNGLE
+  { x1:544, y1:71, x2:564, y2:88, b:5 }, // JUNGLE
+  { x1:566, y1:82, x2:584, y2:97, b:5 }, // JUNGLE
+  { x1:561, y1:82, x2:574, y2:99, b:5 }, // JUNGLE
+  { x1:579, y1:163, x2:655, y2:198, b:5 }, // JUNGLE
+  { x1:244, y1:187, x2:253, y2:215, b:5 }, // JUNGLE
+  { x1:239, y1:178, x2:241, y2:204, b:5 }, // JUNGLE
+  { x1:222, y1:202, x2:237, y2:204, b:5 }, // JUNGLE
+  { x1:240, y1:176, x2:243, y2:200, b:5 }, // JUNGLE
+  { x1:238, y1:186, x2:238, y2:186, b:5 }, // JUNGLE
+  { x1:198, y1:102, x2:200, y2:102, b:5 }, // JUNGLE
+  { x1:191, y1:105, x2:203, y2:124, b:5 }, // JUNGLE
+  { x1:182, y1:108, x2:183, y2:119, b:5 }, // JUNGLE
+  { x1:177, y1:111, x2:184, y2:115, b:5 }, // JUNGLE
+  { x1:182, y1:105, x2:183, y2:115, b:5 }, // JUNGLE
+  { x1:179, y1:111, x2:190, y2:116, b:5 }, // JUNGLE
+  { x1:169, y1:78, x2:174, y2:84, b:5 }, // JUNGLE
+  { x1:57, y1:113, x2:57, y2:113, b:4 }, // TUNDRA
+  { x1:713, y1:24, x2:718, y2:88, b:4 }, // TUNDRA
+  { x1:143, y1:14, x2:347, y2:72, b:4 }, // TUNDRA
+  { x1:372, y1:15, x2:714, y2:48, b:4 }, // TUNDRA
+  { x1:477, y1:50, x2:628, y2:59, b:4 }, // TUNDRA
+  { x1:522, y1:49, x2:669, y2:49, b:4 }, // TUNDRA
+  { x1:621, y1:41, x2:714, y2:59, b:4 }, // TUNDRA
+  { x1:368, y1:49, x2:396, y2:58, b:4 }, // TUNDRA
+  { x1:0, y1:109, x2:110, y2:285, b:5 }, // JUNGLE
+  { x1:164, y1:174, x2:185, y2:189, b:5 }, // JUNGLE
+  { x1:283, y1:280, x2:287, y2:286, b:5 }, // JUNGLE
+  { x1:282, y1:281, x2:300, y2:298, b:5 }, // JUNGLE
+  { x1:295, y1:288, x2:317, y2:296, b:5 }, // JUNGLE
+  { x1:481, y1:268, x2:541, y2:299, b:5 }, // JUNGLE
+  { x1:38, y1:147, x2:38, y2:148, b:5 }, // JUNGLE
+  { x1:73, y1:16, x2:147, y2:72, b:4 }, // TUNDRA
+  { x1:0, y1:25, x2:177, y2:71, b:4 }, // TUNDRA
+];
+
+
+    // Increase this to make the world feel MASSIVE by adding more cells (not just scaling).
+    // Tip: 2 = 4x cells, 3 = 9x cells (may be heavy on slower machines).
+    const WORLD_FACTOR = 4;
+    const GW = 180 * WORLD_FACTOR;
+    const GH = 90 * WORLD_FACTOR;
+
+    // Rendering scale: how many world-units each logical cell occupies (bigger world = more panning).
+    const MAP_SCALE = 10;
+    const WORLD_W = GW * MAP_SCALE;
+    const WORLD_H = GH * MAP_SCALE;
+    const CELL_COUNT = GW * GH;
+
+    const TICK_HZ = 20;
+    const DELTA_HZ = 10;
+    const HEARTBEAT_HZ = 2;
+    const HOST_DEAD_MS = 4500;
+
+    const ARMY_CAP_BASE = 180;
+    const ARMY_CAP_PER_CELL = 1.1;
+
+    // Population is displayed and grows, but does not affect combat/borders (per request)
+    const POP_CAP_BASE = 500;
+    const POP_CAP_PER_CELL = 3.0;
+
+    const ARMY_BASE_PROD_PER_SEC = 4;
+    const ARMY_PROD_PER_CELL_PER_SEC = 0.06;
+
+    const POP_BASE_PROD_PER_SEC = 7;
+    const POP_PROD_PER_CELL_PER_SEC = 0.10;
+
+    // HP (kept relatively low so conquest doesn't feel slow)
+    const PLAYER_HP = 12;
+    const NEUTRAL_HP = 1;
+
+    // Attack direction bias
+    const ATTRACT_PROB = 0.30;
+
+    // Defender retaliation (army-only)
+    const DEFENDER_LOSS_CHANCE = 0.20;
+    const DEFENDER_RETALIATE_BASE = 0.10;
+    const DEFENDER_RETALIATE_CAP  = 0.85;
+    const DEFENDER_RETALIATE_SCALE = 0.65;
+
+    // Orders
+    const ORDER_MIN_DEPLOY = 2;
+    const ORDER_MAX_PCT = 0.80;
+    const ORDER_MIN_PCT = 0.05;
+
+    const FRONTIER_REBUILD_EVERY_TICKS = 8;
+    const STALL_CANCEL_TICKS = 90;
+
+    // Sea transport (slower)
+    const BOAT_SPEED_CELLS_PER_SEC = 10;
+
+    const relayUrls = [
+      'wss://tracker.openwebtorrent.com',
+      'wss://tracker.webtorrent.dev'
+    ];
+
+    const TURN_PROXY_URL = 'https://0fc54e79.finalempireworker.pages.dev/ice'; // your Cloudflare Pages Function
+    const stunIceServers = [
+      { urls: ['stun:stun.l.google.com:19302'] },
+      { urls: ['stun:stun1.l.google.com:19302'] },
+      { urls: ['stun:stun2.l.google.com:19302'] },
+    ];
+
+    async function fetchIceServers(url) {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) throw new Error('ICE fetch failed: ' + r.status);
+      const data = await r.json();
+      // Accept either: [ ...iceServers ] OR { iceServers: [ ... ] }
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.iceServers)) return data.iceServers;
+      return null;
+    }
+
+    // Start with STUN; add TURN/TURNS from proxy if available (no player configuration needed)
+    let rtcConfig = { iceServers: [...stunIceServers] };
+
+    try {
+      const ice = await fetchIceServers(TURN_PROXY_URL);
+      if (ice && ice.length) {
+        // Prefer to keep our STUN and add only TURN/TURNS entries from provider
+        const turnOnly = ice.filter(s => {
+          const urls = s?.urls;
+          const list = Array.isArray(urls) ? urls : [urls].filter(Boolean);
+          return list.some(u => typeof u === 'string' && (u.startsWith('turn:') || u.startsWith('turns:')));
+        });
+        rtcConfig.iceServers.push(...(turnOnly.length ? turnOnly : ice));
+        console.log('[ICE] Loaded relay servers from proxy:', TURN_PROXY_URL);
+      } else {
+        console.warn('[ICE] Proxy returned no servers. Using STUN only.');
+      }
+    } catch (e) {
+      console.warn('[ICE] Could not load TURN/TURNS (using STUN only):', e);
+    }
+
+
+    const roomId = initialRoomId;
+    document.getElementById('roomLabel').textContent = roomId;
+    document.getElementById('meLabel').textContent = (selfId || '').slice(0, 6);
+    document.getElementById('tokenLabel').textContent = token.slice(0, 8);
+    document.getElementById('codeLabel').textContent = joinCode || '—';
+
+    const password = joinCode || undefined;
+
+    const room = joinRoom({
+      appId: 'pixel-conquest-v07',
+      password,
+      relayUrls,
+      relayRedundancy: relayUrls.length,
+      rtcConfig
+    }, roomId, () => setNetLabel('Join error', 'bad'));
+
+    const [sendHello, getHello] = room.makeAction('hello');
+    const [sendCmd, getCmd] = room.makeAction('cmd');
+    const [sendDelta, getDelta] = room.makeAction('delta');
+    const [sendSnap, getSnap] = room.makeAction('snap');
+    const [sendHB, getHB] = room.makeAction('hb');
+
+    // -----------------------------
+    // UI
+    // -----------------------------
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d', { alpha: false });
+
+    const playersEl = document.getElementById('players');
+    const debugEl = document.getElementById('debug');
+
+    const hoverInfoEl = document.getElementById('hoverInfo');
+    const myStatsEl = document.getElementById('myStats');
+    const ordersPanelEl = document.getElementById('ordersPanel');
+
+    const hostLabel = document.getElementById('hostLabel');
+    const slotLabel = document.getElementById('slotLabel');
+
+    const lobbyBtn = document.getElementById('lobbyBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const modeBtn = document.getElementById('modeBtn');
+    const clearOrdersBtn = document.getElementById('clearOrdersBtn');
+
+    const sendPctEl = document.getElementById('sendPct');
+    const sendPctLabelEl = document.getElementById('sendPctLabel');
+
+    // -----------------------------
+    // Lobby / Home state (synced via host)
+    // -----------------------------
+    const lobbyOverlay = document.getElementById('lobbyOverlay');
+    const lobbyRoomIdEl = document.getElementById('lobbyRoomId');
+    const phaseLabelEl = document.getElementById('phaseLabel');
+    const lobbyPlayersEl = document.getElementById('lobbyPlayers');
+    const nameInputEl = document.getElementById('nameInput');
+    const readyBtnEl = document.getElementById('readyBtn');
+    const readyStateEl = document.getElementById('readyState');
+    const startMatchBtnEl = document.getElementById('startMatchBtn');
+    const leaveLobbyBtnEl = document.getElementById('leaveLobbyBtn');
+    const copyJoinBtnEl = document.getElementById('copyJoinBtn');
+    const copyRoomBtnEl = document.getElementById('copyRoomBtn');
+    const lobbyJoinCodeEl = document.getElementById('lobbyJoinCode');
+    const copyCodeBtnEl = document.getElementById('copyCodeBtn');
+    const hostReqHintEl = document.getElementById('hostReqHint');
+    const lobbyNationCfgBtnEl = document.getElementById('lobbyNationCfgBtn');
+
+    const nationSelectEl = document.getElementById('nationSelect');
+
+    // Nation config overlay (host tool)
+    const nationCfgBtn = document.getElementById('nationCfgBtn');
+    const nationCfgOverlay = document.getElementById('nationCfgOverlay');
+    const cfgModeLabelEl = document.getElementById('cfgModeLabel');
+    const cfgNationSelectEl = document.getElementById('cfgNationSelect');
+    const cfgPickBtnEl = document.getElementById('cfgPickBtn');
+    const cfgClearNationBtnEl = document.getElementById('cfgClearNationBtn');
+    const cfgListEl = document.getElementById('cfgList');
+    const cfgOutEl = document.getElementById('cfgOut');
+    const cfgCopyBtnEl = document.getElementById('cfgCopyBtn');
+    const cfgCloseBtnEl = document.getElementById('cfgCloseBtn');
+    const cfgResetAllBtnEl = document.getElementById('cfgResetAllBtn');
+    const cfgSaveLocalBtnEl = document.getElementById('cfgSaveLocalBtn');
+
+
+// Biome config overlay (host tool)
+const biomeCfgBtn = document.getElementById('biomeCfgBtn');
+const lobbyBiomeCfgBtnEl = document.getElementById('lobbyBiomeCfgBtn');
+const biomeCfgOverlay = document.getElementById('biomeCfgOverlay');
+const cfgBiomeSelectEl = document.getElementById('cfgBiomeSelect');
+const biomeRectCountEl = document.getElementById('biomeRectCount');
+const biomeRectListEl = document.getElementById('biomeRectList');
+const biomeCfgOutEl = document.getElementById('biomeCfgOut');
+const biomeCopyBtnEl = document.getElementById('biomeCopyBtn');
+const biomeCloseBtnEl = document.getElementById('biomeCloseBtn');
+const biomeUndoBtnEl = document.getElementById('biomeUndoBtn');
+const biomeClearBtnEl = document.getElementById('biomeClearBtn');
+
+// Nations are now hardcoded; hide the old nation-spawn config buttons.
+if (nationCfgBtn) nationCfgBtn.hidden = true;
+if (lobbyNationCfgBtnEl) lobbyNationCfgBtnEl.hidden = true;
+
+
+
+    let lobbyPhase = 0; // 0=lobby, 1=playing
+    let lobbySuppressed = false; // user closed lobby overlay manually
+    let lobbyLocked = false; // lock new players after match start
+    let lobbyNames = new Array(MAX_PLAYERS + 1).fill('');
+    let lobbyNation = new Array(MAX_PLAYERS + 1).fill('');
+    let lobbyReady = new Int8Array(MAX_PLAYERS + 1);
+    let lobbyDirty = true;
+
+    const NAME_KEY = 'px_name_v7_' + roomId;
+    const NATION_KEY = 'px_nation_v7_' + roomId;
+
+    function sanitizeName(s) {
+      const t = String(s ?? '').replace(/[\x00-\x1F<>]/g, '').trim();
+      return t.slice(0, 18);
+    }
+
+    function lobbyPayload() {
+      return {
+        phase: lobbyPhase,
+        locked: lobbyLocked ? 1 : 0,
+        names: lobbyNames.slice(),
+        nation: lobbyNation.slice(),
+        ready: Array.from(lobbyReady)
+      };
+    }
+
+    function applyLobbyPayload(p) {
+      if (!p) return;
+      lobbyPhase = (p.phase | 0) ? 1 : 0;
+      // After the match starts, revert to the standard host-switching mechanics.
+      if (lobbyPhase === 1 && ROLE === 'host') {
+        ROLE = 'join';
+        saveRolePref(roomId, joinCode, 'join');
+      }
+      lobbyLocked = !!(p.locked | 0);
+
+      if (Array.isArray(p.names) && p.names.length === MAX_PLAYERS + 1) {
+        lobbyNames = p.names.map(sanitizeName);
+      }
+      if (Array.isArray(p.nation) && p.nation.length === MAX_PLAYERS + 1) {
+        lobbyNation = p.nation.map(s => String(s || '').toUpperCase()).map(k => (NATION_KEYS.has(k) ? k : ''));
+      }
+      if (Array.isArray(p.ready) && p.ready.length === MAX_PLAYERS + 1) {
+        lobbyReady = Int8Array.from(p.ready.map(v => (v ? 1 : 0)));
+      }
+      lobbyDirty = true;
+      uiDirty = true;
+    }
+
+    function setLobbyVisible(v) {
+      lobbyOverlay.hidden = !v;
+    }
+
+    function buildJoinLink() {
+      // Always include the join code. Never include a player token.
+      const u = new URL(location.href);
+      u.hash = '#' + roomId;
+      u.searchParams.set('code', joinCode);
+      u.searchParams.delete('pw');
+      u.searchParams.delete('token');
+      return u.toString();
+    }
+
+    async function copyText(txt) {
+      try {
+        await navigator.clipboard.writeText(txt);
+        return true;
+      } catch {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = txt;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+          return true;
+        } catch { return false; }
+      }
+    }
+
+    function sendLobbyCmd(cmd) {
+      if (!hostId) return;
+      if (hostId === selfId && isHost) {
+        handleHostLobbyCmdSelf(cmd);
+        return;
+      }
+      sendCmd(cmd, hostId);
+    }
+
+    function handleHostLobbyCmdSelf(cmd) {
+      const slot = tokenToSlot.get(token) || peerToSlot.get(selfId) || 0;
+      if (!slot || eliminated[slot]) return;
+
+      // Lobby commands (available before match start too)
+      if (cmd?.type === 'setNation') {
+        if (gameStarted || lobbyLocked) return;
+        const k = String(cmd.nation || '').toUpperCase();
+        if (!NATION_KEYS.has(k)) return;
+        lobbyNation[slot] = k;
+        lobbyDirty = true;
+        uiDirty = true;
+        return;
+      }
+
+      if (cmd?.type === 'setName') {
+        lobbyNames[slot] = sanitizeName(cmd.name);
+        lobbyDirty = true;
+        uiDirty = true;
+        return;
+      }
+      if (cmd?.type === 'setReady') {
+        lobbyReady[slot] = cmd.ready ? 1 : 0;
+        lobbyDirty = true;
+        uiDirty = true;
+        return;
+      }
+
+      if (cmd?.type === 'setName') {
+        lobbyNames[slot] = sanitizeName(cmd.name);
+        lobbyDirty = true; uiDirty = true;
+        return;
+      }
+      if (cmd?.type === 'setReady') {
+        lobbyReady[slot] = cmd.ready ? 1 : 0;
+        lobbyDirty = true; uiDirty = true;
+        return;
+      }
+    }
+
+    function renderLobbyPlayers() {
+      lobbyPlayersEl.innerHTML = '';
+      const online = new Set(activePeerIdsInclSelf());
+
+      let anyPlayers = false;
+      let allReady = true;
+      let activeCount = 0;
+
+      for (let s = 1; s <= MAX_PLAYERS; s++) {
+        const tok = slotToToken[s];
+        if (!tok) continue;
+        anyPlayers = true;
+        activeCount++;
+
+        const pid = slotToPeer[s];
+        const isOnlineNow = pid ? online.has(pid) : false;
+        const isMe = tok === token;
+
+        const nm = sanitizeName(lobbyNames[s]) || ('P' + s);
+        const rdy = !!lobbyReady[s];
+
+        if (!rdy) allReady = false;
+
+        const row = document.createElement('div');
+        row.className = 'lpRow';
+
+        const left = document.createElement('div');
+        left.className = 'lpLeft';
+        left.innerHTML = `
+          <div>
+            <span class="mono">P${s}</span><div class="mono" style="opacity:.95; margin-top:4px;">${sanitizeName(lobbyNames[s]) || ("P"+s)}</div>
+            <div class="mono" style="opacity:.75; margin-top:6px;">Nation: ${nationLabel(lobbyNation[s])}</div>
+            ${isMe ? '<span class="pill" style="margin-left:8px;">me</span>' : ''}
+          </div>
+          <div class="mono" style="opacity:.75;">${pid ? shortId(pid) : '(reserved)'}</div>
+        `;
+
+        const right = document.createElement('div');
+        right.className = 'lpRight';
+        right.innerHTML = `
+          <span class="tag ${isOnlineNow ? 'good' : 'warn'}">${isOnlineNow ? 'online' : 'offline'}</span>
+          <span class="tag ${rdy ? 'good' : 'warn'}">${rdy ? 'ready' : 'not ready'}</span>
+        `;
+
+        row.appendChild(left);
+        row.appendChild(right);
+        lobbyPlayersEl.appendChild(row);
+      }
+
+      const amHost = (hostId === selfId && isHost);
+
+      // Phase label
+      phaseLabelEl.textContent = (lobbyPhase ? 'Playing' : 'Lobby') + (lobbyLocked ? ' (Locked)' : '');
+
+      // Show / hide host tools
+      if (lobbyNationCfgBtnEl) lobbyNationCfgBtnEl.style.display = (amHost && lobbyPhase === 0 && !gameStarted) ? '' : 'none';
+      startMatchBtnEl.style.display = amHost ? '' : 'none';
+
+      // Enable Start only when at least 1 active player, and everyone ready
+      startMatchBtnEl.disabled = !(anyPlayers && allReady && !gameStarted && lobbyPhase === 0);
+
+      // Host guidance
+      if (!amHost) {
+        hostReqHintEl.textContent = 'Waiting for the host to start the match…';
+      } else {
+        hostReqHintEl.textContent =
+          gameStarted ? 'Match in progress.' :
+          (anyPlayers ? (allReady ? 'All players are ready. You can start.' : 'Waiting for all players to be ready…') : 'Share the join link to bring players in.');
+      }
+
+      // Your ready state label
+      const myS = mySlot();
+      if (myS) {
+        readyStateEl.textContent = lobbyReady[myS] ? 'Ready' : 'Not ready';
+      } else {
+        readyStateEl.textContent = 'Spectator';
+      }
+    }
+
+    function startMatchHost() {
+      if (!isHost) return;
+      if (gameStarted) return;
+
+      // Lock room and move phase
+      lobbyLocked = true;
+      lobbyPhase = 1;
+      lobbySuppressed = false;
+
+      // Fill defaults for empty names for occupied slots
+      for (let s = 1; s <= MAX_PLAYERS; s++) {
+        if (!slotToToken[s]) continue;
+        if (!sanitizeName(lobbyNames[s])) lobbyNames[s] = 'P' + s;
+        if (!lobbyNation[s] || !NATION_KEYS.has(lobbyNation[s])) {
+          lobbyNation[s] = (NATIONS[(s - 1) % NATIONS.length] || NATIONS[0]).key;
+        }
+      }
+
+      lobbyDirty = true; uiDirty = true;
+
+      initNewMatch().then(() => {
+        broadcastSnapshot();
+        // immediately push lobby state too
+        sendHB({ hostId: selfId, tick, slotToPeer, slotToToken, lobby: lobbyPayload() }, undefined);
+      });
+    }
+
+    function resetToLobbyHost() {
+      if (!isHost) return;
+
+      // Return to lobby (do not auto-start)
+      lobbyPhase = 0;
+      lobbyLocked = false;
+      lobbySuppressed = false;
+      lobbyReady.fill(0);
+
+      gameStarted = false;
+      tick = 0;
+      pendingCell.clear();
+
+      // Clear visible world back to neutral (no land mask until match starts)
+      for (let i = 0; i < CELL_COUNT; i++) { owner[i] = -1; cellHP[i] = 0; }
+      pArmy.fill(0); pArmyCap.fill(0);
+      pPop.fill(0); pPopCap.fill(0);
+      pArea.fill(0);
+      eliminated.fill(0);
+      hostOrders = Array(MAX_PLAYERS + 1).fill(null).map(() => []);
+      nextOrderId = 1;
+
+      lobbyDirty = true;
+      uiDirty = true;
+      broadcastSnapshot();
+      sendHB({ hostId: selfId, tick, slotToPeer, slotToToken, lobby: lobbyPayload() }, undefined);
+    }
+
+    // Wire lobby UI
+    lobbyRoomIdEl.textContent = roomId;
+    if (lobbyJoinCodeEl) lobbyJoinCodeEl.textContent = joinCode;
+
+    // Load last name
+    const savedName = sanitizeName(localStorage.getItem(NAME_KEY));
+    if (savedName) nameInputEl.value = savedName;
+
+    // Populate nation dropdown
+    function populateNationSelect(selectEl) {
+      if (!selectEl) return;
+      selectEl.innerHTML = '';
+      for (const n of NATIONS) {
+        const opt = document.createElement('option');
+        opt.value = n.key;
+        opt.textContent = n.label;
+        selectEl.appendChild(opt);
+      }
+    }
+    populateNationSelect(nationSelectEl);
+
+    const savedNation = String(localStorage.getItem(NATION_KEY) || '').toUpperCase();
+    if (savedNation && NATION_KEYS.has(savedNation)) nationSelectEl.value = savedNation;
+    else nationSelectEl.value = NATIONS[0].key;
+
+    nationSelectEl.addEventListener('change', () => {
+      const k = String(nationSelectEl.value || '').toUpperCase();
+      if (!NATION_KEYS.has(k)) return;
+      localStorage.setItem(NATION_KEY, k);
+      sendLobbyCmd({ type: 'setNation', nation: k });
+    });
+
+    // Push initial nation to host so it's visible immediately
+    setTimeout(() => {
+      const k = String(nationSelectEl.value || '').toUpperCase();
+      if (NATION_KEYS.has(k)) sendLobbyCmd({ type: 'setNation', nation: k });
+    }, 350);
+
+
+    nameInputEl.addEventListener('change', () => {
+      const nm = sanitizeName(nameInputEl.value);
+      nameInputEl.value = nm;
+      localStorage.setItem(NAME_KEY, nm);
+      sendLobbyCmd({ type: 'setName', name: nm });
+    });
+    nameInputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') nameInputEl.dispatchEvent(new Event('change'));
+    });
+
+    readyBtnEl.onclick = () => {
+      const s = mySlot();
+      if (!s) return;
+      const next = lobbyReady[s] ? 0 : 1;
+      sendLobbyCmd({ type: 'setReady', ready: next });
+    };
+
+    startMatchBtnEl.onclick = () => startMatchHost();
+
+    if (lobbyNationCfgBtnEl) lobbyNationCfgBtnEl.onclick = () => {
+      if (!isHost) { setNetLabel('Only the host can configure nation spawns', 'warn'); return; }
+      openNationCfg();
+    };
+
+    leaveLobbyBtnEl.onclick = () => { lobbySuppressed = true; setLobbyVisible(false); };
+
+    copyJoinBtnEl.onclick = async () => {
+      const ok = await copyText(buildJoinLink());
+      setNetLabel(ok ? 'Join link copied' : 'Copy failed', ok ? 'good' : 'bad');
+    };
+
+    copyRoomBtnEl.onclick = async () => {
+      const ok = await copyText(roomId);
+      setNetLabel(ok ? 'Room ID copied' : 'Copy failed', ok ? 'good' : 'bad');
+    };
+
+    if (copyCodeBtnEl) copyCodeBtnEl.onclick = async () => {
+      const ok = await copyText(joinCode);
+      setNetLabel(ok ? 'Code copied' : 'Copy failed', ok ? 'good' : 'bad');
+    };
+
+    lobbyBtn.onclick = () => { lobbySuppressed = false; setLobbyVisible(true); };
+
+
+    // -----------------------------
+    // Nation spawn config (host-only utility)
+    // -----------------------------
+    const NATION_SPAWNS_KEY = 'px_nation_spawns_v7_' + roomId + '_wf' + WORLD_FACTOR;
+
+    function loadNationSpawns() {
+      // Start with hardcoded placeholder (empty by default), then merge local overrides.
+      const base = structuredClone(NATION_SPAWNS || {});
+      try {
+        const raw = localStorage.getItem(NATION_SPAWNS_KEY);
+        if (!raw) return base;
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') return base;
+        for (const [k0, v] of Object.entries(obj)) {
+          const k = String(k0 || '').toUpperCase();
+          if (!NATION_KEYS.has(k) || !v) continue;
+          const x = (v.x | 0), y = (v.y | 0);
+          if (Number.isFinite(x) && Number.isFinite(y)) base[k] = { x, y };
+        }
+      } catch {}
+      return base;
+    }
+
+    let nationSpawns = loadNationSpawns();
+    let nationCfgPickMode = false;
+    let nationCfgPrevLobbyWasOpen = false;
+
+
+    function nationSpawnConfigText() {
+      // Export as a clean constant that can be pasted back into the code.
+      const ordered = {};
+      for (const n of NATIONS) {
+        if (nationSpawns[n.key]) ordered[n.key] = nationSpawns[n.key];
+      }
+      return `// Paste this into the code near NATION_SPAWNS\nconst NATION_SPAWNS = ${JSON.stringify(ordered, null, 2)};\n`;
+    }
+
+    function refreshNationCfgUI() {
+      if (!cfgNationSelectEl) return;
+
+      // Ensure dropdown is filled once
+      if (!cfgNationSelectEl.options.length) populateNationSelect(cfgNationSelectEl);
+
+      const sel = String(cfgNationSelectEl.value || '').toUpperCase() || NATIONS[0].key;
+      if (!NATION_KEYS.has(sel)) cfgNationSelectEl.value = NATIONS[0].key;
+
+      cfgModeLabelEl.textContent = nationCfgPickMode ? 'Pick on Map' : 'View';
+
+      // List
+      cfgListEl.innerHTML = '';
+      for (const n of NATIONS) {
+        const v = nationSpawns[n.key];
+        const row = document.createElement('div');
+        row.className = 'cfgItem';
+        row.innerHTML = `
+          <div class="mono">${n.label} <span style="opacity:.75;">(${n.key})</span></div>
+          <div class="mono" style="opacity:.85;">${v ? `x=${v.x}, y=${v.y}` : '—'}</div>
+        `;
+        cfgListEl.appendChild(row);
+      }
+
+      cfgOutEl.value = nationSpawnConfigText();
+    }
+
+    function openNationCfg() {
+      nationCfgPickMode = false;
+
+      // If the lobby overlay is open, temporarily hide it so the map is visible/clickable.
+      nationCfgPrevLobbyWasOpen = (!lobbyOverlay.hidden);
+      if (nationCfgPrevLobbyWasOpen) lobbyOverlay.hidden = true;
+
+      nationCfgOverlay.hidden = false;
+      refreshNationCfgUI();
+      setNetLabel('Nation config opened', 'good');
+    }
+    function closeNationCfg() {
+      nationCfgPickMode = false;
+      nationCfgOverlay.hidden = true;
+
+      // Restore lobby overlay if we hid it when entering config.
+      if (nationCfgPrevLobbyWasOpen) lobbyOverlay.hidden = false;
+      nationCfgPrevLobbyWasOpen = false;
+
+      setNetLabel('Nation config closed', 'good');
+    }
+
+    nationCfgBtn.onclick = () => {
+      if (!isHost) { setNetLabel('Only the host can configure nation spawns', 'warn'); return; }
+      openNationCfg();
+    };
+
+    cfgPickBtnEl.onclick = () => {
+      if (!isHost) return;
+      nationCfgPickMode = !nationCfgPickMode;
+      refreshNationCfgUI();
+      setNetLabel(nationCfgPickMode ? 'Click on the map to set the nation position' : 'Pick mode off', nationCfgPickMode ? 'warn' : 'good');
+    };
+
+    cfgClearNationBtnEl.onclick = () => {
+      if (!isHost) return;
+      const k = String(cfgNationSelectEl.value || '').toUpperCase();
+      if (nationSpawns[k]) delete nationSpawns[k];
+      refreshNationCfgUI();
+    };
+
+    cfgResetAllBtnEl.onclick = () => {
+      if (!isHost) return;
+      nationSpawns = structuredClone(NATION_SPAWNS || {});
+      refreshNationCfgUI();
+    };
+
+    cfgSaveLocalBtnEl.onclick = () => {
+      if (!isHost) return;
+      try { localStorage.setItem(NATION_SPAWNS_KEY, JSON.stringify(nationSpawns)); } catch {}
+      setNetLabel('Saved locally', 'good');
+    };
+
+    cfgCopyBtnEl.onclick = async () => {
+      const ok = await copyText(nationSpawnConfigText());
+      setNetLabel(ok ? 'Config copied' : 'Copy failed', ok ? 'good' : 'bad');
+      refreshNationCfgUI();
+    };
+
+    cfgCloseBtnEl.onclick = () => closeNationCfg();
+
+    // Fill cfg dropdown once
+    populateNationSelect(cfgNationSelectEl);
+    cfgNationSelectEl.value = NATIONS[0].key;
+    refreshNationCfgUI();
+
+
+    // Default: show lobby until match starts
+    setLobbyVisible(true);
+
+
+// If we don't hear from a host shortly after opening the page, assume we are the first peer
+// and become host. This avoids briefly stealing host from an already-running match.
+const SELF_HOST_DELAY_MS = 250;
+setTimeout(() => {
+  // Only the creator (Create Game) is allowed to self-elect host in the lobby.
+  if (ROLE !== 'host') return;
+  if (hostId) return;
+  maybeAdoptHost(selfId);
+}, SELF_HOST_DELAY_MS);
+
+
+    // -----------------------------
+    // View (pan/zoom)
+    // -----------------------------
+    let viewScale = 1;
+    let viewX = 0;
+    let viewY = 0;
+
+    function resizeCanvas() {
+      const wrap = document.getElementById('wrap');
+      const w = wrap.clientWidth - 380;
+      const h = wrap.clientHeight;
+      canvas.width = Math.max(320, w);
+      canvas.height = Math.max(200, h);
+
+      const fit = Math.min(canvas.width / WORLD_W, canvas.height / WORLD_H);
+      // Default view: zoomed in by MAP_SCALE so the world is ~10x larger than the viewport (you can pan).
+      const freshView = (!Number.isFinite(viewScale) || viewScale <= 0);
+      if (freshView) {
+        viewScale = fit * MAP_SCALE;
+        // Start centered on the full world.
+        viewX = (WORLD_W - (canvas.width / viewScale)) * 0.5;
+        viewY = (WORLD_H - (canvas.height / viewScale)) * 0.5;
+      }
+
+      const cx = viewX + (canvas.width / viewScale) * 0.5;
+      const cy = viewY + (canvas.height / viewScale) * 0.5;
+
+      viewScale = clamp(viewScale, fit, fit * MAP_SCALE * 16);
+      viewX = cx - (canvas.width / viewScale) * 0.5;
+      viewY = cy - (canvas.height / viewScale) * 0.5;
+      clampView();
+    }
+
+    function clampView() {
+      const vw = canvas.width / viewScale;
+      const vh = canvas.height / viewScale;
+      const maxX = Math.max(0, WORLD_W - vw);
+      const maxY = Math.max(0, WORLD_H - vh);
+      viewX = clamp(viewX, 0, maxX);
+      viewY = clamp(viewY, 0, maxY);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function screenToWorld(mx, my) {
+      return { wx: viewX + mx / viewScale, wy: viewY + my / viewScale };
+    }
+
+    
+
+// -----------------------------
+// Biome region config (host-only utility)
+// -----------------------------
+const BIOME_RECTS_KEY = 'px_biome_rects_v1_' + roomId + '_wf' + WORLD_FACTOR;
+let biomeCfgPrevLobbyWasOpen = false;
+let biomeCfgActive = false;
+
+let biomeRects = [];
+const biomeMap = new Uint8Array(CELL_COUNT);
+
+function loadBiomeRects() {
+  // Prefer local saved config; fall back to the hardcoded array.
+  let rects = null;
+  try {
+    const raw = localStorage.getItem(BIOME_RECTS_KEY);
+    if (raw) rects = JSON.parse(raw);
+  } catch (_) {}
+  if (!Array.isArray(rects)) rects = BIOME_RECTS_HARDCODED;
+  biomeRects = rects.map(r => ({
+    x1: r.x1|0, y1: r.y1|0, x2: r.x2|0, y2: r.y2|0, b: r.b|0
+  }));
+  rebuildBiomeMap();
+  refreshBiomeCfgUI();
+}
+
+function saveBiomeRects() {
+  try { localStorage.setItem(BIOME_RECTS_KEY, JSON.stringify(biomeRects)); } catch {}
+}
+
+function clampRect(r) {
+  let x1 = clamp(Math.min(r.x1, r.x2), 0, GW - 1) | 0;
+  let y1 = clamp(Math.min(r.y1, r.y2), 0, GH - 1) | 0;
+  let x2 = clamp(Math.max(r.x1, r.x2), 0, GW - 1) | 0;
+  let y2 = clamp(Math.max(r.y1, r.y2), 0, GH - 1) | 0;
+  return { x1, y1, x2, y2, b: r.b|0 };
+}
+
+function rebuildBiomeMap() {
+  biomeMap.fill(0);
+  for (const rr of biomeRects) {
+    const r = clampRect(rr);
+    const b = r.b | 0;
+    if (!b) continue;
+    for (let y = r.y1; y <= r.y2; y++) {
+      let base = y * GW;
+      for (let x = r.x1; x <= r.x2; x++) biomeMap[base + x] = b;
+    }
+  }
+}
+
+function setBiomeSelectOptions() {
+  if (!cfgBiomeSelectEl) return;
+  cfgBiomeSelectEl.innerHTML = '';
+  for (const b of BIOME_DEFS) {
+    const opt = document.createElement('option');
+    opt.value = String(b.id);
+    opt.textContent = b.label;
+    cfgBiomeSelectEl.appendChild(opt);
+  }
+  cfgBiomeSelectEl.value = '1';
+}
+
+function renderBiomeRectList() {
+  if (!biomeRectListEl) return;
+  biomeRectListEl.innerHTML = '';
+  const show = biomeRects.slice().reverse().slice(0, 40); // newest first
+  if (!show.length) {
+    const empty = document.createElement('div');
+    empty.className = 'small';
+    empty.style.opacity = '0.8';
+    empty.textContent = '— no rectangles yet';
+    biomeRectListEl.appendChild(empty);
+    return;
+  }
+  for (let k = 0; k < show.length; k++) {
+    const r = show[k];
+    const row = document.createElement('div');
+    row.className = 'cfgItem';
+    const b = BIOME_BY_ID.get(r.b|0);
+    const rgb = b ? b.rgb : [160,160,160];
+    const left = document.createElement('div');
+    left.className = 'mono';
+    left.innerHTML =
+      `<span class="biomeSwatch" style="background: rgb(${rgb[0]},${rgb[1]},${rgb[2]});"></span>` +
+      `${b ? b.key : 'NONE'}  [${r.x1},${r.y1}]→[${r.x2},${r.y2}]`;
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.gap = '8px';
+    const del = document.createElement('button');
+    del.className = 'ghostBtn';
+    del.textContent = 'Delete';
+    del.onclick = () => {
+      const idx = biomeRects.lastIndexOf(r);
+      if (idx >= 0) biomeRects.splice(idx, 1);
+      rebuildBiomeMap();
+      saveBiomeRects();
+      refreshBiomeCfgUI();
+    };
+    right.appendChild(del);
+    row.appendChild(left);
+    row.appendChild(right);
+    biomeRectListEl.appendChild(row);
+  }
+}
+
+function buildBiomeCfgSnippet() {
+  const lines = [];
+  lines.push('// Paste into index.html near BIOME_RECTS_HARDCODED');
+  lines.push('const BIOME_RECTS_HARDCODED = [');
+  for (const r0 of biomeRects) {
+    const r = clampRect(r0);
+    const b = BIOME_BY_ID.get(r.b|0);
+    const key = b ? b.key : 'PLAINS';
+    lines.push(`  { x1:${r.x1}, y1:${r.y1}, x2:${r.x2}, y2:${r.y2}, b:${r.b} }, // ${key}`);
+  }
+  lines.push('];');
+  lines.push('');
+  return lines.join('\n');
+}
+
+function refreshBiomeCfgUI() {
+  if (biomeRectCountEl) biomeRectCountEl.textContent = String(biomeRects.length);
+  renderBiomeRectList();
+  if (biomeCfgOutEl) biomeCfgOutEl.value = buildBiomeCfgSnippet();
+}
+
+function openBiomeCfg() {
+  if (!isHost) { setNetLabel('Only the host can configure biomes', 'warn'); return; }
+
+  biomeCfgActive = true;
+
+  biomeCfgPrevLobbyWasOpen = (!lobbyOverlay.hidden);
+  if (biomeCfgPrevLobbyWasOpen) lobbyOverlay.hidden = true;
+
+  if (biomeCfgOverlay) biomeCfgOverlay.hidden = false;
+  refreshBiomeCfgUI();
+  setNetLabel('Biome config opened', 'good');
+}
+
+function closeBiomeCfg() {
+  biomeCfgActive = false;
+  if (biomeCfgOverlay) biomeCfgOverlay.hidden = true;
+
+  if (biomeCfgPrevLobbyWasOpen) lobbyOverlay.hidden = false;
+  biomeCfgPrevLobbyWasOpen = false;
+
+  biomeDragActive = false;
+  biomeDragStart = biomeDragEnd = null;
+
+  setNetLabel('Biome config closed', 'good');
+}
+
+function addBiomeRectFromCells(a, b, biomeId) {
+  const rr = clampRect({ x1:a.x|0, y1:a.y|0, x2:b.x|0, y2:b.y|0, b: biomeId|0 });
+  biomeRects.push(rr);
+  rebuildBiomeMap();
+  saveBiomeRects();
+  refreshBiomeCfgUI();
+}
+
+// Drag paint state (handled at pointer layer)
+let biomeDragActive = false;
+let biomeDragStart = null;
+let biomeDragEnd = null;
+
+if (biomeCfgBtn) biomeCfgBtn.onclick = openBiomeCfg;
+if (lobbyBiomeCfgBtnEl) lobbyBiomeCfgBtnEl.onclick = openBiomeCfg;
+if (biomeCloseBtnEl) biomeCloseBtnEl.onclick = closeBiomeCfg;
+
+if (biomeUndoBtnEl) biomeUndoBtnEl.onclick = () => {
+  if (!isHost) return;
+  biomeRects.pop();
+  rebuildBiomeMap();
+  saveBiomeRects();
+  refreshBiomeCfgUI();
+};
+if (biomeClearBtnEl) biomeClearBtnEl.onclick = () => {
+  if (!isHost) return;
+  biomeRects.length = 0;
+  rebuildBiomeMap();
+  saveBiomeRects();
+  refreshBiomeCfgUI();
+};
+if (biomeCopyBtnEl) biomeCopyBtnEl.onclick = async () => {
+  try { await navigator.clipboard.writeText(buildBiomeCfgSnippet()); } catch (_) {}
+  setNetLabel('Biome config copied', 'good');
+};
+
+// init biome tool
+setBiomeSelectOptions();
+loadBiomeRects();
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+// Biome drag paint: update selection rectangle (no panning).
+if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
+  const p = mouseToCell(e);
+  if (p) biomeDragEnd = p;
+  e.preventDefault();
+  return;
+}
+
+
+      const { wx, wy } = screenToWorld(mx, my);
+
+      const fit = Math.min(canvas.width / WORLD_W, canvas.height / WORLD_H);
+      const zoomFactor = (e.deltaY < 0) ? 1.12 : (1 / 1.12);
+
+      viewScale = clamp(viewScale * zoomFactor, fit, fit * MAP_SCALE * 16);
+      viewX = wx - mx / viewScale;
+      viewY = wy - my / viewScale;
+      clampView();
+    }, { passive: false });
+
+    let spaceDown = false;
+    let isPanning = false;
+    let panStart = { mx: 0, my: 0, vx: 0, vy: 0 };
+    let activePointerId = null;
+    let downButton = 0;
+    let pointerMoved = false;
+    const DRAG_THRESHOLD_PX = 4;
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') { spaceDown = true; e.preventDefault(); }
+      if (e.key === 'Escape') {
+        selectedIdx = -1;
+        sendManualSeed(-1);
+      }
+      if (e.key.toLowerCase() === 'm') modeBtn.click();
+    }, { passive: false });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') spaceDown = false;
+    });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      // Right-click is reserved for quick cancel; we don't use it for panning.
+      if (e.button === 2) return;
+
+      canvas.setPointerCapture(e.pointerId);
+      activePointerId = e.pointerId;
+      downButton = e.button;
+      pointerMoved = false;
+
+      const rect = canvas.getBoundingClientRect();
+      panStart.mx = e.clientX - rect.left;
+      panStart.my = e.clientY - rect.top;
+      panStart.vx = viewX;
+      panStart.vy = viewY;
+
+// Biome drag paint (while overlay open): left-drag paints rectangles.
+if (!biomeCfgOverlay.hidden && e.button === 0 && !spaceDown && isHost) {
+  biomeDragActive = true;
+  biomeDragStart = mouseToCell(e);
+  biomeDragEnd = biomeDragStart;
+  pointerMoved = true; // prevent click-path
+  isPanning = false;
+  canvas.style.cursor = 'crosshair';
+  e.preventDefault();
+  return;
+}
+
+
+      // Middle-mouse (or Space+drag) begins panning immediately.
+      isPanning = (e.button === 1) || (e.button === 0 && spaceDown);
+      canvas.style.cursor = isPanning ? 'grabbing' : 'crosshair';
+      e.preventDefault();
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== activePointerId) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+// Biome drag paint: update selection rectangle (no panning).
+if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
+  const p = mouseToCell(e);
+  if (p) biomeDragEnd = p;
+  e.preventDefault();
+  return;
+}
+
+
+      const dxPx = mx - panStart.mx;
+      const dyPx = my - panStart.my;
+      const distPx = Math.hypot(dxPx, dyPx);
+
+      if (distPx >= DRAG_THRESHOLD_PX) pointerMoved = true;
+
+      // Left-drag pans like an image (once we detect an actual drag, not a click).
+      if (!isPanning && downButton === 0 && pointerMoved) {
+        isPanning = true;
+        canvas.style.cursor = 'grabbing';
+      }
+
+      if (!isPanning) return;
+
+      const dx = dxPx / viewScale;
+      const dy = dyPx / viewScale;
+
+      viewX = panStart.vx - dx;
+      viewY = panStart.vy - dy;
+      clampView();
+      e.preventDefault();
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (e.pointerId !== activePointerId) return;
+
+      const wasPanning = isPanning;
+      isPanning = false;
+      activePointerId = null;
+      canvas.style.cursor = 'crosshair';
+
+// Finalize biome drag paint (host-only)
+if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
+  const a = biomeDragStart;
+  const b = biomeDragEnd || biomeDragStart;
+  const sel = parseInt(cfgBiomeSelectEl.value || '1', 10) || 1;
+  const biomeId = e.shiftKey ? 0 : sel;
+  if (a && b) addBiomeRectFromCells(a, b, biomeId);
+  biomeDragActive = false;
+  biomeDragStart = biomeDragEnd = null;
+  return;
+}
+
+
+      // If it wasn't a drag-pan, treat it as a click/tap (primary button only).
+      if (!wasPanning && downButton === 0) handleMapPress(e);
+    });
+
+    // -----------------------------
+    // Token buttons
+    // -----------------------------
+    document.getElementById('newIdBtn').onclick = () => {
+      token = crypto.randomUUID();
+      sessionStorage.setItem(SESSION_KEY, token);
+      location.reload();
+    };
+
+    document.getElementById('copyTokBtn').onclick = async () => {
+      try { await navigator.clipboard.writeText(token); } catch (_) {}
+    };
+
+    document.getElementById('saveTokBtn').onclick = () => localStorage.setItem(SAVED_KEY, token);
+    document.getElementById('restoreTokBtn').onclick = () => {
+      const saved = localStorage.getItem(SAVED_KEY);
+      if (!saved) return;
+      sessionStorage.setItem(SESSION_KEY, saved);
+      location.reload();
+    };
+
+    // Local mode state
+    let localMode = 0; // 0=auto, 1=manual
+    function updateModeBtn() { modeBtn.textContent = localMode ? 'Mode: Manual' : 'Mode: Auto'; }
+    updateModeBtn();
+
+    // Slider (% deployed)
+    let localSendPct = Number(sendPctEl.value) || 20;
+    function updateSendPctUI() {
+      localSendPct = clamp(Number(sendPctEl.value) || 20, 5, 80);
+      sendPctLabelEl.textContent = `${localSendPct}%`;
+    }
+    sendPctEl.addEventListener('input', updateSendPctUI);
+    updateSendPctUI();
+
+    modeBtn.onclick = () => {
+      localMode = localMode ? 0 : 1;
+      updateModeBtn();
+      selectedIdx = -1;
+      sendManualSeed(-1);
+    };
+
+    clearOrdersBtn.onclick = () => { if (!gameStarted) return; if (hostId) sendCmd({ type: 'clearOrders' }, hostId); };
+
+    // -----------------------------
+    // State (shared)
+    // -----------------------------
+    let owner = new Int16Array(CELL_COUNT);
+    let cellHP = new Int16Array(CELL_COUNT);
+
+    let pArmy = new Int32Array(MAX_PLAYERS + 1);
+    let pArmyCap = new Int32Array(MAX_PLAYERS + 1);
+
+    let pPop = new Int32Array(MAX_PLAYERS + 1);
+    let pPopCap = new Int32Array(MAX_PLAYERS + 1);
+
+    let pArea = new Int32Array(MAX_PLAYERS + 1);
+
+    // eliminated => spectator
+    let eliminated = new Int8Array(MAX_PLAYERS + 1);
+    eliminated.fill(0);
+
+    let slotToPeer = Array(MAX_PLAYERS + 1).fill(null);
+    let slotToToken = Array(MAX_PLAYERS + 1).fill(null);
+    let peerToSlot = new Map();
+    let tokenToSlot = new Map();
+
+    const connectedPeers = new Set();
+
+    let hostId = null;
+    let isHost = false;
+    let lastHeartbeatAt = 0;
+
+    let gameStarted = false;
+    let tick = 0;
+
+    const manualSeed = new Int32Array(MAX_PLAYERS + 1);
+    manualSeed.fill(-1);
+
+    let clientOrders = [];
+
+    let hostOrders = Array(MAX_PLAYERS + 1).fill(null).map(() => []);
+    let nextOrderId = 1;
+
+    const armyAcc = new Float32Array(MAX_PLAYERS + 1);
+    const popAcc = new Float32Array(MAX_PLAYERS + 1);
+
+    const pendingCell = new Map();
+    let uiDirty = true;
+
+    let landMaskImage = null; // optional (world-mask.png) used as a faint background
+
+    let selectedIdx = -1;
+    let hoverIdx = -1;
+
+    const off = document.createElement('canvas');
+    off.width = GW; off.height = GH;
+    const offCtx = off.getContext('2d');
+    const img = offCtx.createImageData(GW, GH);
+
+    const palette = {
+      water: [10, 18, 40], neutral: [105, 110, 120],
+      p1: [90, 180, 255], p2: [255, 120, 120], p3: [120, 255, 170],
+      p4: [255, 215, 90], p5: [190, 140, 255], p6: [255, 160, 220],
+      select: [255, 255, 255], target: [255, 80, 80]
+    };
+
+    // -----------------------------
+    // Helpers
+    // -----------------------------
+    function setNetLabel(text, cls) {
+      const el = document.getElementById('netLabel');
+      el.textContent = text;
+      el.className = cls || '';
+    }
+
+    function idx(x, y) { return y * GW + x; }
+    function inBounds(x, y) { return x >= 0 && y >= 0 && x < GW && y < GH; }
+    function toXY(i) { return { x: i % GW, y: (i / GW) | 0 }; }
+    function cellCenter(i) { const p = toXY(i); return { x: p.x + 0.5, y: p.y + 0.5 }; }
+
+    function neighbors(i) {
+      const x = i % GW, y = (i / GW) | 0;
+      const out = [];
+      if (x > 0) out.push(i - 1);
+      if (x < GW - 1) out.push(i + 1);
+      if (y > 0) out.push(i - GW);
+      if (y < GH - 1) out.push(i + GW);
+      return out;
+    }
+
+    function manhattan(a, b) {
+      const ax = a % GW, ay = (a / GW) | 0, bx = b % GW, by = (b / GW) | 0;
+      return Math.abs(ax - bx) + Math.abs(ay - by);
+    }
+
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+    function shortId(id) { return (id || '').slice(0, 6); }
+    function lexLess(a, b) { return String(a) < String(b); }
+
+    function mySlot() {
+      const s = peerToSlot.get(selfId) || tokenToSlot.get(token) || 0;
+      if (!s) return 0;
+      return eliminated[s] ? 0 : s;
+    }
+
+    function activePeerIdsInclSelf() { return [selfId, ...connectedPeers]; }
+    function desiredHostFromKnownPeers() {
+      const ids = activePeerIdsInclSelf().slice().sort();
+      return ids[0] || selfId;
+    }
+
+    function isPeerOnline(pid) { return pid === selfId || connectedPeers.has(pid); }
+
+    function hostSeemsAlive() {
+  if (!hostId) return false;
+  if (hostId === selfId) return true;
+  if (!connectedPeers.has(hostId)) return false;
+  return (Date.now() - lastHeartbeatAt) < HOST_DEAD_MS;
+}
+
+function canHostNow() {
+  // Creator hosts during lobby; after match start, standard host takeovers apply.
+  if (ROLE === 'host') return true;
+  if (ROLE === 'join') return lobbyPhase === 1;
+  return false;
+}
+
+function maybeAdoptHost(newHostId) {
+  if (!newHostId) return;
+
+  // Pre-match: pin host to the creator to prevent split-brain hosting.
+  if (ROLE === 'host' && lobbyPhase === 0) {
+    hostId = selfId;
+  } else {
+    // Keep the current host if it appears alive. This prevents late joiners from
+    // accidentally "winning" host election and resetting everyone.
+    if (!hostId || !hostSeemsAlive()) {
+      hostId = newHostId;
+    }
+  }
+
+  const shouldHost = (hostId === selfId) && canHostNow();
+  if (shouldHost && !isHost) { isHost = true; startHostLoops(); }
+  if (!shouldHost && isHost) { isHost = false; stopHostLoops(); }
+
+  hostLabel.textContent = shortId(hostId);
+  setNetLabel(isHost ? 'Connected (you are host)' : 'Connected', 'good');
+}
+function colorForOwner(o) {
+      if (o === -2) return palette.water;
+      if (o === -1) return palette.neutral;
+      return palette['p' + o] || palette.neutral;
+    }
+
+    function renderPlayerList() {
+      const online = new Set(activePeerIdsInclSelf());
+      playersEl.innerHTML = '';
+
+      for (let s = 1; s <= MAX_PLAYERS; s++) {
+        const pid = slotToPeer[s];
+        const tok = slotToToken[s];
+        const isMe = tok === token;
+        const isOnlineNow = pid ? online.has(pid) : false;
+
+        const row = document.createElement('div');
+        row.className = 'row';
+
+        const status =
+          tok
+            ? (eliminated[s] ? `<span class="bad">ELIMINATED</span>` : (isOnlineNow ? `<span class="good">online</span>` : `<span class="warn">offline</span>`))
+            : 'empty';
+
+        const left = document.createElement('div');
+        left.innerHTML = `
+          <div>
+            <span class="mono">P${s}</span><div class="mono" style="opacity:.95; margin-top:4px;">${sanitizeName(lobbyNames[s]) || ("P"+s)}</div>
+            <div class="mono" style="opacity:.75; margin-top:6px;">Nation: ${nationLabel(lobbyNation[s])}</div>
+            ${isMe ? '<span class="pill" style="margin-left:8px;">me</span>' : ''}
+          </div>
+          <div class="mono" style="opacity:.75; margin-top:4px;">
+            ${pid ? shortId(pid) : (tok ? '(reserved)' : '—')}
+          </div>
+          <div class="mono" style="opacity:.9; margin-top:6px;">
+            <div>Army: ${pArmy[s]} / ${pArmyCap[s]}</div>
+            <div>Pop:  ${pPop[s]} / ${pPopCap[s]}</div>
+            <div>Area: ${pArea[s]}</div>
+          </div>
+        `;
+
+        const right = document.createElement('div');
+        right.innerHTML = status;
+
+        row.appendChild(left);
+        row.appendChild(right);
+        playersEl.appendChild(row);
+      }
+
+      const s = mySlot();
+      slotLabel.textContent = s ? `P${s}` : 'spectator';
+    }
+
+    function renderMyOrdersPanel() {
+      const s = mySlot();
+      if (!s) { ordersPanelEl.textContent = '—'; return; }
+
+      const mine = clientOrders.filter(o => o.slot === s);
+      if (!mine.length) { ordersPanelEl.textContent = '—'; return; }
+
+      ordersPanelEl.innerHTML = '';
+      for (const o of mine.slice(0, 12)) {
+        const div = document.createElement('div');
+        div.className = 'orderItem mono';
+        const kind = (o.kind === 1) ? 'boat' : (o.kind === 2) ? 'naval' : 'land';
+        const goal = (o.goalOwner === -1) ? 'Neutral' : ('P' + o.goalOwner);
+        div.innerHTML = `<b>#${o.id}</b> ${kind} → target ${o.target} | goal=${goal} | deployed=${o.budget}`;
+        ordersPanelEl.appendChild(div);
+      }
+    }
+
+    function sumDeployedFor(slot) {
+      let sum = 0;
+      for (const o of clientOrders) if (o.slot === slot) sum += o.budget | 0;
+      return sum;
+    }
+
+    // -----------------------------
+    // Map generation (mask or procedural)
+    // -----------------------------
+    async function buildLandMask() {
+      try {
+        const im = await loadImage('world-mask.png');
+        landMaskImage = im;
+        const c = document.createElement('canvas');
+        c.width = im.naturalWidth; c.height = im.naturalHeight;
+        const cctx = c.getContext('2d');
+        cctx.drawImage(im, 0, 0);
+        const data = cctx.getImageData(0, 0, c.width, c.height).data;
+
+        const land = new Uint8Array(CELL_COUNT);
+        for (let y = 0; y < GH; y++) {
+          for (let x = 0; x < GW; x++) {
+            const sx = Math.floor((x / GW) * c.width);
+            const sy = Math.floor((y / GH) * c.height);
+            const p = (sy * c.width + sx) * 4;
+            const lum = (data[p] + data[p + 1] + data[p + 2]) / 3;
+            land[idx(x, y)] = lum > 40 ? 1 : 0;
+          }
+        }
+        return { land, source: 'world-mask.png' };
+      } catch (_) {
+        const rng = mulberry32(hashStr(roomId + ':land'));
+        const blobs = [];
+        for (let i = 0; i < 9; i++) blobs.push({ x: rng() * GW, y: rng() * GH, r: (0.10 + rng() * 0.25) * Math.min(GW, GH) });
+        const field = new Float32Array(CELL_COUNT);
+        for (let y = 0; y < GH; y++) {
+          for (let x = 0; x < GW; x++) {
+            let v = 0;
+            for (const b of blobs) {
+              const dx = x - b.x, dy = y - b.y;
+              v += Math.exp(-(dx * dx + dy * dy) / (b.r * b.r));
+            }
+            const lat = Math.abs((y / (GH - 1)) * 2 - 1);
+            v *= (1.08 - 0.25 * lat);
+            field[idx(x, y)] = v;
+          }
+        }
+        const target = 0.38;
+        const sorted = Array.from(field).sort((a, b) => a - b);
+        const thr = sorted[Math.floor(sorted.length * (1 - target))];
+        const land = new Uint8Array(CELL_COUNT);
+        for (let i = 0; i < CELL_COUNT; i++) land[i] = field[i] >= thr ? 1 : 0;
+        return { land, source: 'procedural' };
+      }
+    }
+
+    function loadImage(src) {
+      return new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im);
+        im.onerror = () => rej(new Error('load fail'));
+        im.src = src;
+      });
+    }
+
+    function hashStr(s) {
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return h >>> 0;
+    }
+    function mulberry32(a) {
+      return function () {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+    }
+
+    // -----------------------------
+    // Slot assignment (host)
+    // -----------------------------
+    function hostAssignSlotForToken(peerId, tok) {
+      // If the match is locked, only allow reconnects for already-known tokens.
+      if (lobbyLocked && tok && !tokenToSlot.has(tok)) return 0;
+
+      if (!tok) return 0;
+
+      if (tokenToSlot.has(tok)) {
+        const s = tokenToSlot.get(tok);
+        const currentPeer = slotToPeer[s];
+        if (currentPeer && currentPeer !== peerId && isPeerOnline(currentPeer)) return -1;
+        slotToPeer[s] = peerId;
+        peerToSlot.set(peerId, s);
+        slotToToken[s] = tok;
+        return s;
+      }
+
+      for (let s = 1; s <= MAX_PLAYERS; s++) {
+        if (!slotToToken[s]) {
+          slotToToken[s] = tok;
+          tokenToSlot.set(tok, s);
+          slotToPeer[s] = peerId;
+          peerToSlot.set(peerId, s);
+          return s;
+        }
+      }
+      return 0;
+    }
+
+    // -----------------------------
+    // Match init / reset (host)
+    // -----------------------------
+    async function initNewMatch() {
+      const { land, source } = await buildLandMask();
+
+      pendingCell.clear();
+      for (let i = 0; i < CELL_COUNT; i++) {
+        if (!land[i]) { owner[i] = -2; cellHP[i] = 0; }
+        else { owner[i] = -1; cellHP[i] = NEUTRAL_HP; }
+        pendingCell.set(i, [owner[i], cellHP[i]]);
+      }
+
+      pArmy.fill(0); pArmyCap.fill(0);
+      pPop.fill(0); pPopCap.fill(0);
+      pArea.fill(0);
+
+      eliminated.fill(0);
+
+      armyAcc.fill(0); popAcc.fill(0);
+      manualSeed.fill(-1);
+
+      hostOrders = Array(MAX_PLAYERS + 1).fill(null).map(() => []);
+      nextOrderId = 1;
+
+      for (let s = 1; s <= MAX_PLAYERS; s++) {
+        if (slotToToken[s]) spawnCapitalBlob(s, lobbyNation[s]);
+      }
+
+      recomputeAreasCapsFull();
+      for (let s = 1; s <= MAX_PLAYERS; s++) {
+        if (pArea[s] > 0) {
+          pArmy[s] = Math.min(pArmyCap[s], 120);
+          pPop[s]  = Math.min(pPopCap[s], 300);
+        }
+      }
+
+      gameStarted = true;
+      uiDirty = true;
+      debugEl.textContent = `map=${GW}x${GH} | land=${source} | v0.7`;
+    }
+
+
+    function spawnCapitalBlob(slot, nationKey) {
+      const desired = String(nationKey || '').toUpperCase();
+      const prefer = (NATION_KEYS.has(desired) ? nationSpawns?.[desired] : null) || null;
+
+      function tryPlaceAt(x, y) {
+        x |= 0; y |= 0;
+        if (!inBounds(x, y)) return false;
+        const c = idx(x, y);
+        if (owner[c] !== -1) return false;
+
+        const cells = [];
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const xx = x + dx, yy = y + dy;
+            if (!inBounds(xx, yy)) continue;
+            const i = idx(xx, yy);
+            if (owner[i] === -2) continue;
+            cells.push(i);
+          }
+        }
+        for (const i of cells) {
+          const prev = owner[i];
+          owner[i] = slot;
+          cellHP[i] = PLAYER_HP;
+          pendingCell.set(i, [owner[i], cellHP[i]]);
+          if (prev >= 1 && prev <= MAX_PLAYERS) pArea[prev]--;
+          pArea[slot]++;
+        }
+        updateCapsFor(slot);
+        return true;
+      }
+
+      // 1) Preferred nation spawn (if configured)
+      if (prefer && Number.isFinite(prefer.x) && Number.isFinite(prefer.y)) {
+        // If the exact cell isn't valid, search nearby (spiral-ish).
+        const baseX = prefer.x | 0, baseY = prefer.y | 0;
+        if (tryPlaceAt(baseX, baseY)) return;
+
+        for (let r = 1; r <= 30; r++) {
+          for (let dy = -r; dy <= r; dy++) {
+            const y = baseY + dy;
+            const x1 = baseX - r;
+            const x2 = baseX + r;
+            if (tryPlaceAt(x1, y)) return;
+            if (tryPlaceAt(x2, y)) return;
+          }
+          for (let dx = -r + 1; dx <= r - 1; dx++) {
+            const x = baseX + dx;
+            const y1 = baseY - r;
+            const y2 = baseY + r;
+            if (tryPlaceAt(x, y1)) return;
+            if (tryPlaceAt(x, y2)) return;
+          }
+        }
+        // Fall through to random if we couldn't place near the preferred spot.
+      }
+
+      // 2) Fallback: random neutral land
+      const rng = mulberry32(hashStr(roomId + ':cap:' + slot + ':' + Date.now()));
+      for (let tries = 0; tries < 12000; tries++) {
+        const x = (rng() * GW) | 0, y = (rng() * GH) | 0;
+        if (tryPlaceAt(x, y)) return;
+      }
+    }
+
+    // -----------------------------
+    // Economy (host)
+    // -----------------------------
+    function updateCapsFor(s) {
+      pArmyCap[s] = Math.floor(ARMY_CAP_BASE + pArea[s] * ARMY_CAP_PER_CELL);
+      pArmy[s] = clamp(pArmy[s], 0, pArmyCap[s]);
+
+      pPopCap[s] = Math.floor(POP_CAP_BASE + pArea[s] * POP_CAP_PER_CELL);
+      pPop[s] = clamp(pPop[s], 0, pPopCap[s]);
+
+      uiDirty = true;
+    }
+
+    function recomputeAreasCapsFull() {
+      pArea.fill(0);
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const o = owner[i];
+        if (o >= 1 && o <= MAX_PLAYERS) pArea[o]++;
+      }
+      for (let s = 1; s <= MAX_PLAYERS; s++) updateCapsFor(s);
+    }
+
+    function eliminateSlot(s) {
+      if (eliminated[s]) return;
+      eliminated[s] = 1;
+
+      hostOrders[s] = [];
+      pArmy[s] = 0;
+      // keep pop for display or future mechanics; irrelevant to borders now
+      manualSeed[s] = -1;
+      uiDirty = true;
+    }
+
+    function sumDeployedHost(slot) {
+      let sum = 0;
+      for (const o of hostOrders[slot]) sum += (o.budget | 0);
+      return sum;
+    }
+
+    function globalHitsPerTick(slot) {
+      const a = pArea[slot];
+      const deployed = sumDeployedHost(slot);
+      const hits = 2 + Math.floor(a / 140) + Math.floor(deployed / 50);
+      return clamp(hits, 2, 30);
+    }
+
+    // -----------------------------
+    // Pathing helpers
+    // -----------------------------
+    function reachableByLand(seed, target) {
+      if (seed < 0 || target < 0) return false;
+      if (owner[seed] === -2 || owner[target] === -2) return false;
+      if (seed === target) return true;
+
+      const q = new Int32Array(CELL_COUNT);
+      let qh = 0, qt = 0;
+      const vis = new Uint8Array(CELL_COUNT);
+      vis[seed] = 1; q[qt++] = seed;
+
+      while (qh < qt) {
+        const v = q[qh++];
+        for (const n of neighbors(v)) {
+          if (vis[n]) continue;
+          if (owner[n] === -2) continue;
+          if (n === target) return true;
+          vis[n] = 1;
+          q[qt++] = n;
+        }
+      }
+      return false;
+    }
+
+    function hasWaterNeighbor(i) {
+      for (const n of neighbors(i)) if (owner[n] === -2) return true;
+      return false;
+    }
+
+    function findCoastalLandNear(startLandIdx, desiredOwner /* null or -1 or player */) {
+      if (startLandIdx < 0 || startLandIdx >= CELL_COUNT) return -1;
+      if (owner[startLandIdx] === -2) return -1;
+
+      const q = new Int32Array(CELL_COUNT);
+      let qh = 0, qt = 0;
+      const vis = new Uint8Array(CELL_COUNT);
+
+      vis[startLandIdx] = 1;
+      q[qt++] = startLandIdx;
+
+      let steps = 0;
+      while (qh < qt && steps++ < 6000) {
+        const v = q[qh++];
+
+        if (owner[v] !== -2 && hasWaterNeighbor(v)) {
+          if (desiredOwner == null || owner[v] === desiredOwner) return v;
+        }
+
+        for (const n of neighbors(v)) {
+          if (vis[n]) continue;
+          if (owner[n] === -2) continue;
+          vis[n] = 1;
+          q[qt++] = n;
+        }
+      }
+      return -1;
+    }
+
+    function collectComponentBorderWater(slot, seed) {
+      const q = new Int32Array(CELL_COUNT);
+      let qh = 0, qt = 0;
+      const vis = new Uint8Array(CELL_COUNT);
+
+      vis[seed] = 1; q[qt++] = seed;
+      const waters = [];
+
+      while (qh < qt) {
+        const v = q[qh++];
+        for (const n of neighbors(v)) {
+          if (owner[n] === slot) {
+            if (!vis[n]) { vis[n] = 1; q[qt++] = n; }
+          } else if (owner[n] === -2) {
+            waters.push(n);
+          }
+        }
+      }
+      return waters;
+    }
+
+    function chooseAutoSeed(slot, target) {
+      let seed = -1, best = 1e9;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        if (owner[i] !== slot) continue;
+        const d = manhattan(i, target);
+        if (d < best) { best = d; seed = i; }
+      }
+      return seed;
+    }
+
+    function buildFrontierFromSeed(slot, seed, goalOwner, mode) {
+      const q = new Int32Array(CELL_COUNT);
+      let qh = 0, qt = 0;
+      const vis = new Uint8Array(CELL_COUNT);
+
+      vis[seed] = 1; q[qt++] = seed;
+      const frontier = [];
+
+      while (qh < qt) {
+        const v = q[qh++];
+        let isFront = false;
+
+        for (const n of neighbors(v)) {
+          if (owner[n] === slot) {
+            if (!vis[n]) { vis[n] = 1; q[qt++] = n; }
+          } else if (owner[n] !== -2) {
+            if (goalOwner === -1) {
+              if (owner[n] === -1) isFront = true;
+            } else {
+              if (mode === 1) {
+                if (owner[n] === goalOwner) isFront = true;
+              } else {
+                if (owner[n] === goalOwner || owner[n] === -1) isFront = true;
+              }
+            }
+          }
+        }
+
+        if (isFront) frontier.push(v);
+      }
+
+      return frontier;
+    }
+
+    function pickNeighborToward(target, candidates) {
+      if (!candidates.length) return -1;
+      if (Math.random() < ATTRACT_PROB) {
+        let best = 1e9, pick = candidates[0];
+        for (const n of candidates) {
+          const d = manhattan(n, target);
+          if (d < best) { best = d; pick = n; }
+        }
+        return pick;
+      }
+      return candidates[(Math.random() * candidates.length) | 0];
+    }
+
+    // Water-only shortest path (boats must not cut across land)
+    function findWaterPath(startWater, endWater) {
+      if (startWater < 0 || endWater < 0) return null;
+      if (owner[startWater] !== -2 || owner[endWater] !== -2) return null;
+      if (startWater === endWater) return [startWater];
+
+      const q = new Int32Array(CELL_COUNT);
+      const prev = new Int32Array(CELL_COUNT);
+      prev.fill(-1);
+      const vis = new Uint8Array(CELL_COUNT);
+
+      let qh = 0, qt = 0;
+      vis[startWater] = 1;
+      q[qt++] = startWater;
+
+      while (qh < qt) {
+        const v = q[qh++];
+        for (const n of neighbors(v)) {
+          if (vis[n]) continue;
+          if (owner[n] !== -2) continue;
+          vis[n] = 1;
+          prev[n] = v;
+          if (n === endWater) {
+            qh = qt; // break outer
+            break;
+          }
+          q[qt++] = n;
+        }
+      }
+
+      if (!vis[endWater]) return null;
+
+      const path = [];
+      let cur = endWater;
+      while (cur !== -1) {
+        path.push(cur);
+        cur = prev[cur];
+      }
+      path.reverse();
+      return path;
+    }
+
+    // -----------------------------
+    // Combat (host) - army-only
+    // -----------------------------
+    function defenderArmy(defSlot) {
+      return pArmy[defSlot] | 0;
+    }
+
+    function takeDefenderLoss(defSlot) {
+      if (pArmy[defSlot] > 0) { pArmy[defSlot] -= 1; return true; }
+      return false;
+    }
+
+    // -----------------------------
+    // Orders (host)
+    // -----------------------------
+    function refundToArmy(slot, amount) {
+      if (amount <= 0) return;
+      pArmy[slot] = clamp(pArmy[slot] + amount, 0, pArmyCap[slot]);
+      uiDirty = true;
+    }
+
+    function removeOrder(slot, orderId, refund) {
+      const arr = hostOrders[slot];
+      const idx = arr.findIndex(o => o.id === orderId);
+      if (idx < 0) return;
+      const [o] = arr.splice(idx, 1);
+      if (refund) refundToArmy(slot, o.budget | 0);
+      uiDirty = true;
+    }
+
+    function clearAllOrders(slot, refund) {
+      const arr = hostOrders[slot];
+      if (refund) {
+        let sum = 0;
+        for (const o of arr) sum += (o.budget | 0);
+        refundToArmy(slot, sum);
+      }
+      hostOrders[slot] = [];
+      uiDirty = true;
+    }
+
+    function makeOrderBase(slot, mode, target, goalOwner, budget) {
+      return {
+        slot,
+        id: nextOrderId++,
+        kind: 0,          // 0 land, 1 boat travel, 2 naval ops
+        mode: mode ? 1 : 0,
+        target,
+        goalOwner,
+        budget,
+        seed: -1,
+        frontier: [],
+        stamp: 0,
+        stall: 0,
+
+        navalSeed: -1,    // land cell we land on (coastal)
+        boatActive: 0,
+        boatX: 0, boatY: 0,
+
+        boatPath: null,   // host-only: array of water cell indices
+        boatSeg: 0,
+        boatSegT: 0
+      };
+    }
+
+    function addOrder(slot, order) {
+      const arr = hostOrders[slot];
+      arr.push(order);
+      uiDirty = true;
+    }
+
+    function startLandOrder(slot, target, mode, budget, goalOwner, seedForComponent) {
+      const o = makeOrderBase(slot, mode, target, goalOwner, budget);
+      o.kind = 0;
+
+      let seed = -1;
+      if (mode === 1 && seedForComponent >= 0 && owner[seedForComponent] === slot) seed = seedForComponent;
+      if (seed < 0) seed = chooseAutoSeed(slot, target);
+
+      if (seed < 0) { refundToArmy(slot, budget); return; }
+
+      o.seed = seed;
+      o.frontier = buildFrontierFromSeed(slot, seed, goalOwner, o.mode);
+      o.stamp = tick;
+      addOrder(slot, o);
+    }
+
+    // Creates a boat order that routes through water only, then turns into a naval+land order.
+    function startNavalOrder(slot, coastalLandIdx, finalTargetIdx, mode, budget, goalOwner, seedForComponent) {
+      const o = makeOrderBase(slot, mode, finalTargetIdx, goalOwner, budget);
+      o.kind = 1;
+      o.navalSeed = coastalLandIdx;
+
+      // End water options: water neighbors of the coastal land cell
+      const endOpts = [];
+      for (const n of neighbors(coastalLandIdx)) if (owner[n] === -2) endOpts.push(n);
+      if (!endOpts.length) { refundToArmy(slot, budget); return; }
+
+      // Start water options: border water of the selected component (preferred),
+      // else any coastal water of player.
+      let startOpts = [];
+      if (seedForComponent >= 0 && owner[seedForComponent] === slot) startOpts = collectComponentBorderWater(slot, seedForComponent);
+
+      if (!startOpts.length) {
+        // fallback: scan any coastal water neighbor
+        for (let i = 0; i < CELL_COUNT && startOpts.length < 512; i++) {
+          if (owner[i] !== slot) continue;
+          for (const n of neighbors(i)) if (owner[n] === -2) { startOpts.push(n); break; }
+        }
+      }
+      if (!startOpts.length) { refundToArmy(slot, budget); return; }
+
+      // Choose best start/end pair (cheap heuristic), then BFS water route
+      let bestStart = -1, bestEnd = -1, bestD = 1e9;
+      for (const sW of startOpts) {
+        for (const eW of endOpts) {
+          const d = manhattan(sW, eW);
+          if (d < bestD) { bestD = d; bestStart = sW; bestEnd = eW; }
+        }
+      }
+      if (bestStart < 0 || bestEnd < 0) { refundToArmy(slot, budget); return; }
+
+      const path = findWaterPath(bestStart, bestEnd);
+      if (!path || path.length < 1) { refundToArmy(slot, budget); return; }
+
+      o.boatPath = path;
+      o.boatSeg = 0;
+      o.boatSegT = 0;
+      const c0 = cellCenter(path[0]);
+      o.boatX = c0.x;
+      o.boatY = c0.y;
+      o.boatActive = 1;
+
+      addOrder(slot, o);
+    }
+
+    function attackCellFromOrder(order, targetIdx) {
+      const attacker = order.slot;
+      if (order.budget <= 0) return false;
+      if (owner[targetIdx] === -2) return false;
+
+      // Spend 1 troop to attempt 1 hit (always does at least 1 damage)
+      order.budget -= 1;
+      uiDirty = true;
+
+      const defOwner = owner[targetIdx];
+
+      // base damage
+      cellHP[targetIdx] -= 1;
+
+      if (defOwner >= 1 && defOwner <= MAX_PLAYERS && defOwner !== attacker) {
+        const defA = defenderArmy(defOwner);
+        const attPower = Math.max(1, (order.budget | 0) + Math.floor(pArmy[attacker] * 0.20) + 10);
+        const ratio = defA / attPower;
+
+        // Defender retaliation drains attacker budget more often when defender has larger army
+        const retChance = clamp(DEFENDER_RETALIATE_BASE + ratio * DEFENDER_RETALIATE_SCALE, DEFENDER_RETALIATE_BASE, DEFENDER_RETALIATE_CAP);
+        if (order.budget > 0 && Math.random() < retChance) order.budget -= 1;
+
+        // Defender casualties (army only)
+        if (Math.random() < DEFENDER_LOSS_CHANCE) takeDefenderLoss(defOwner);
+
+        // Bonus damage when attacker significantly outclasses defender
+        const adv = attPower / Math.max(1, defA + 1);
+        const bonusChance = clamp((adv - 1.15) * 0.18, 0, 0.45);
+        if (Math.random() < bonusChance) cellHP[targetIdx] -= 1;
+      } else {
+        // Neutral: small chance for extra damage if the push is large (feels snappier)
+        if (order.budget > 60) {
+          const bonusChance = clamp(order.budget / 300, 0, 0.30);
+          if (Math.random() < bonusChance) cellHP[targetIdx] -= 1;
+        }
+      }
+
+      if (cellHP[targetIdx] <= 0) {
+        // capture
+        owner[targetIdx] = attacker;
+        cellHP[targetIdx] = PLAYER_HP;
+
+        if (defOwner >= 1 && defOwner <= MAX_PLAYERS) {
+          pArea[defOwner] = Math.max(0, pArea[defOwner] - 1);
+          updateCapsFor(defOwner);
+          if (pArea[defOwner] === 0 && slotToToken[defOwner] && !eliminated[defOwner]) eliminateSlot(defOwner);
+        }
+        pArea[attacker] = pArea[attacker] + 1;
+        updateCapsFor(attacker);
+      }
+
+      pendingCell.set(targetIdx, [owner[targetIdx], cellHP[targetIdx]]);
+      return true;
+    }
+
+    function orderTryOneHit(order) {
+      const slot = order.slot;
+      if (order.budget <= 0) return { done: true, refund: false };
+      if (order.kind === 0 && owner[order.target] === slot) return { done: true, refund: true };
+
+      if (order.kind === 1) return { done: false };
+
+      if ((tick - order.stamp) >= FRONTIER_REBUILD_EVERY_TICKS) {
+        let seed = order.seed;
+        if (order.kind === 2 && order.navalSeed >= 0 && owner[order.navalSeed] === slot) seed = order.navalSeed;
+        if (seed >= 0 && owner[seed] === slot) {
+          order.frontier = buildFrontierFromSeed(slot, seed, order.goalOwner, order.mode);
+          order.stamp = tick;
+        }
+      }
+
+      // naval ops: take beachhead first
+      if (order.kind === 2 && order.navalSeed >= 0 && owner[order.navalSeed] !== slot) {
+        const beachOwner = owner[order.navalSeed];
+
+        if (order.goalOwner === -1 && beachOwner !== -1) return { done: true, refund: true };
+
+        if (order.goalOwner >= 1) {
+          if (order.mode === 1) {
+            if (beachOwner !== order.goalOwner) return { done: true, refund: true };
+          } else {
+            // auto: allow if it became neutral, but cancel if it's a different player
+            if (beachOwner !== order.goalOwner && beachOwner !== -1) return { done: true, refund: true };
+          }
+        }
+
+        const did = attackCellFromOrder(order, order.navalSeed);
+        order.stall = did ? 0 : (order.stall + 1);
+        return { done: false };
+      }
+
+      const frontier = order.frontier;
+      if (!frontier || frontier.length === 0) {
+        order.stall++;
+        if (order.stall > STALL_CANCEL_TICKS) return { done: true, refund: true };
+        return { done: false };
+      }
+
+      const from = frontier[(Math.random() * frontier.length) | 0];
+      if (owner[from] !== slot) { order.stall++; return { done: false }; }
+
+      const candidates = [];
+      const fromD = manhattan(from, order.target);
+
+      for (const n of neighbors(from)) {
+        if (owner[n] === -2 || owner[n] === slot) continue;
+
+        if (order.goalOwner === -1) {
+          if (owner[n] !== -1) continue;
+        } else {
+          if (order.mode === 1) {
+            if (owner[n] !== order.goalOwner) continue;
+          } else {
+            // AUTO FIX: when targeting a specific enemy, neutral expansion is only allowed if it moves closer to the target.
+            if (owner[n] === order.goalOwner) {
+              // ok
+            } else if (owner[n] === -1) {
+              const nd = manhattan(n, order.target);
+              if (nd >= fromD) continue;
+            } else {
+              continue;
+            }
+          }
+        }
+        candidates.push(n);
+      }
+
+      if (!candidates.length) {
+        order.stall++;
+        if (order.stall > STALL_CANCEL_TICKS) return { done: true, refund: true };
+        return { done: false };
+      }
+
+      const chosen = pickNeighborToward(order.target, candidates);
+      if (chosen < 0) { order.stall++; return { done: false }; }
+
+      const did = attackCellFromOrder(order, chosen);
+      order.stall = did ? 0 : (order.stall + 1);
+
+      if (order.stall > STALL_CANCEL_TICKS) return { done: true, refund: true };
+      return { done: false };
+    }
+
+    function boatTick(order) {
+      if (!order.boatActive || !order.boatPath || order.boatPath.length < 1) return;
+
+      const dt = 1 / TICK_HZ;
+      let dist = BOAT_SPEED_CELLS_PER_SEC * dt;
+
+      while (dist > 0 && order.boatSeg < order.boatPath.length - 1) {
+        const rem = 1 - order.boatSegT;
+        const step = Math.min(dist, rem);
+        order.boatSegT += step;
+        dist -= step;
+        if (order.boatSegT >= 0.999999) {
+          order.boatSeg++;
+          order.boatSegT = 0;
+        }
+      }
+
+      const curIdx = order.boatPath[Math.min(order.boatSeg, order.boatPath.length - 1)];
+      const curC = cellCenter(curIdx);
+
+      if (order.boatSeg >= order.boatPath.length - 1) {
+        order.boatX = curC.x;
+        order.boatY = curC.y;
+
+        order.boatActive = 0;
+        order.kind = 2; // naval ops
+        order.seed = -1;
+        order.frontier = [];
+        order.stamp = tick;
+        order.stall = 0;
+        return;
+      }
+
+      const nextIdx = order.boatPath[order.boatSeg + 1];
+      const nextC = cellCenter(nextIdx);
+
+      order.boatX = curC.x + (nextC.x - curC.x) * order.boatSegT;
+      order.boatY = curC.y + (nextC.y - curC.y) * order.boatSegT;
+    }
+
+    function packOrders() {
+      const packed = [];
+      for (let s = 1; s <= MAX_PLAYERS; s++) {
+        for (const o of hostOrders[s]) {
+          packed.push([
+            o.slot, o.id, o.kind, o.mode, o.target, o.goalOwner, o.budget, o.navalSeed,
+            o.boatActive ? 1 : 0,
+            o.boatX, o.boatY
+          ]);
+        }
+      }
+      return packed;
+    }
+
+    function unpackOrders(packed) {
+      const out = [];
+      if (!Array.isArray(packed)) return out;
+      for (const it of packed) {
+        out.push({
+          slot: it[0] | 0,
+          id: it[1] | 0,
+          kind: it[2] | 0,
+          mode: it[3] | 0,
+          target: it[4] | 0,
+          goalOwner: it[5] | 0,
+          budget: it[6] | 0,
+          navalSeed: it[7] | 0,
+          boatActive: (it[8] | 0),
+          boatX: Number(it[9] || 0),
+          boatY: Number(it[10] || 0)
+        });
+      }
+      return out;
+    }
+
+    // -----------------------------
+    // Host loops
+    // -----------------------------
+    let tickTimer = null, deltaTimer = null, hbTimer = null;
+
+    function startHostLoops() {
+      if (tickTimer) return;
+
+      if (!tokenToSlot.has(token)) {
+        const s = hostAssignSlotForToken(selfId, token);
+        if (s === -1) {
+          token = crypto.randomUUID();
+          sessionStorage.setItem(SESSION_KEY, token);
+          location.reload();
+          return;
+        }
+      }
+
+            // Do not auto-start the match. The lobby controls when initNewMatch() is called.
+      broadcastSnapshot();
+
+
+      tickTimer = setInterval(() => {
+        if (!isHost || !gameStarted) return;
+        tick++;
+
+        // production
+        for (let s = 1; s <= MAX_PLAYERS; s++) {
+          if (eliminated[s] || pArea[s] <= 0) continue;
+
+          armyAcc[s] += (ARMY_BASE_PROD_PER_SEC + (pArea[s] * ARMY_PROD_PER_CELL_PER_SEC)) / TICK_HZ;
+          const aAdd = Math.floor(armyAcc[s]);
+          if (aAdd >= 1) {
+            armyAcc[s] -= aAdd;
+            pArmy[s] = clamp(pArmy[s] + aAdd, 0, pArmyCap[s]);
+            uiDirty = true;
+          }
+
+          popAcc[s] += (POP_BASE_PROD_PER_SEC + (pArea[s] * POP_PROD_PER_CELL_PER_SEC)) / TICK_HZ;
+          const pAdd = Math.floor(popAcc[s]);
+          if (pAdd >= 1) {
+            popAcc[s] -= pAdd;
+            pPop[s] = clamp(pPop[s] + pAdd, 0, pPopCap[s]);
+            uiDirty = true;
+          }
+        }
+
+        // orders
+        for (let s = 1; s <= MAX_PLAYERS; s++) {
+          if (eliminated[s]) { hostOrders[s] = []; continue; }
+
+          const arr = hostOrders[s];
+          if (!arr.length) continue;
+
+          for (const o of arr) if (o.kind === 1) boatTick(o);
+
+          let hits = globalHitsPerTick(s);
+
+          while (hits-- > 0 && arr.length) {
+            const o = arr[(Math.random() * arr.length) | 0];
+            if (o.kind === 0 || o.kind === 2) {
+              const res = orderTryOneHit(o);
+              if (res?.done) removeOrder(s, o.id, !!res.refund);
+            }
+          }
+
+          for (let i = arr.length - 1; i >= 0; i--) {
+            if (arr[i].budget <= 0) removeOrder(s, arr[i].id, false);
+          }
+        }
+
+      }, 1000 / TICK_HZ);
+
+      deltaTimer = setInterval(() => {
+        if (!isHost || !gameStarted) return;
+        flushDeltas();
+      }, 1000 / DELTA_HZ);
+
+      hbTimer = setInterval(() => {
+        if (!isHost) return;
+        sendHB({ hostId: selfId, tick, slotToPeer, slotToToken, lobby: lobbyPayload() }, undefined);
+      }, 1000 / HEARTBEAT_HZ);
+    }
+
+    function stopHostLoops() {
+      if (tickTimer) clearInterval(tickTimer);
+      if (deltaTimer) clearInterval(deltaTimer);
+      if (hbTimer) clearInterval(hbTimer);
+      tickTimer = deltaTimer = hbTimer = null;
+    }
+
+    function flushDeltas() {
+      const u = [];
+      for (const [i, v] of pendingCell.entries()) u.push([i, v[0], v[1]]);
+      pendingCell.clear();
+
+      sendDelta({
+        tick,
+        gameStarted: !!gameStarted,
+        lobby: lobbyPayload(),
+        u,
+        pArmy: Array.from(pArmy),
+        pArmyCap: Array.from(pArmyCap),
+        pPop: Array.from(pPop),
+        pPopCap: Array.from(pPopCap),
+        pArea: Array.from(pArea),
+        eliminated: Array.from(eliminated),
+        orders: packOrders()
+      });
+
+      uiDirty = false;
+    }
+
+    function broadcastSnapshot(targetPeer = undefined) {
+      sendSnap({
+        tick, GW, GH,
+        gameStarted: !!gameStarted,
+        lobby: lobbyPayload(),
+        slotToPeer, slotToToken,
+        owner: Array.from(owner),
+        cellHP: Array.from(cellHP),
+
+        pArmy: Array.from(pArmy),
+        pArmyCap: Array.from(pArmyCap),
+        pPop: Array.from(pPop),
+        pPopCap: Array.from(pPopCap),
+        pArea: Array.from(pArea),
+        eliminated: Array.from(eliminated),
+
+        orders: packOrders()
+      }, targetPeer);
+    }
+
+    // -----------------------------
+    // Network handlers
+    // -----------------------------
+    getHello((msg, peerId) => {
+      if (!isHost) return;
+
+      const tok = msg?.token;
+      const slot = hostAssignSlotForToken(peerId, tok);
+
+      if (slot === -1) {
+        sendHB({ hostId: selfId, tokenConflict: true }, peerId);
+        return;
+      }
+
+      if (slot && gameStarted && !lobbyLocked && !eliminated[slot] && pArea[slot] === 0) {
+        spawnCapitalBlob(slot);
+        updateCapsFor(slot);
+        pArmy[slot] = clamp(pArmy[slot] + 60, 0, pArmyCap[slot]);
+        pPop[slot]  = clamp(pPop[slot] + 200, 0, pPopCap[slot]);
+        uiDirty = true;
+      }
+
+      sendHB({ hostId: selfId, tick, slotToPeer, slotToToken, lobby: lobbyPayload() }, peerId);
+      broadcastSnapshot(peerId);
+    });
+
+    getCmd((cmd, peerId) => {
+      if (!isHost) return;
+      const slot = peerToSlot.get(peerId) || 0;
+      if (!slot || eliminated[slot]) return;
+
+      // Lobby commands (available before match start too)
+      if (cmd?.type === 'setNation') {
+        if (gameStarted || lobbyLocked) return;
+        const k = String(cmd.nation || '').toUpperCase();
+        if (!NATION_KEYS.has(k)) return;
+        lobbyNation[slot] = k;
+        lobbyDirty = true;
+        uiDirty = true;
+        return;
+      }
+      if (cmd?.type === 'setName') {
+        lobbyNames[slot] = sanitizeName(cmd.name);
+        lobbyDirty = true;
+        uiDirty = true;
+        return;
+      }
+      if (cmd?.type === 'setReady') {
+        lobbyReady[slot] = cmd.ready ? 1 : 0;
+        lobbyDirty = true;
+        uiDirty = true;
+        return;
+      }
+
+      if (cmd?.type === 'setManualSeed') {
+        const seed = cmd.seed | 0;
+        manualSeed[slot] = (seed >= 0 && seed < CELL_COUNT && owner[seed] === slot) ? seed : -1;
+        return;
+      }
+
+      if (cmd?.type === 'clearOrders') { clearAllOrders(slot, true); return; }
+      if (cmd?.type === 'requestSnap') { broadcastSnapshot(peerId); return; }
+
+      if (cmd?.type === 'setTarget') {
+        const target = cmd.target | 0;
+        const mode = (cmd.mode | 0) ? 1 : 0;
+        const frac = clamp(Number(cmd.frac ?? 0.20), ORDER_MIN_PCT, ORDER_MAX_PCT);
+
+        if (target < 0 || target >= CELL_COUNT) return;
+        if (owner[target] === -2) return;
+
+        const canDeploy = pArmy[slot];
+        const wantDeploy = Math.floor(canDeploy * frac);
+        const deploy = clamp(Math.max(ORDER_MIN_DEPLOY, wantDeploy), 0, canDeploy);
+        if (deploy <= 0) return;
+
+        pArmy[slot] -= deploy;
+        uiDirty = true;
+
+        const goalOwner = owner[target];
+
+        let seedForComponent = -1;
+        if (mode === 1 && manualSeed[slot] >= 0 && owner[manualSeed[slot]] === slot) seedForComponent = manualSeed[slot];
+        if (seedForComponent < 0) seedForComponent = chooseAutoSeed(slot, target);
+
+        // BOATS: manual OR auto, if the target is across water (unreachable by land)
+        if (seedForComponent >= 0 && owner[seedForComponent] === slot && !reachableByLand(seedForComponent, target)) {
+          const desired = (goalOwner >= 1) ? goalOwner : (goalOwner === -1 ? -1 : null);
+          const coastal = findCoastalLandNear(target, desired);
+          if (coastal >= 0 && hasWaterNeighbor(coastal)) {
+            startNavalOrder(slot, coastal, target, mode, deploy, goalOwner, seedForComponent);
+            return;
+          }
+        }
+
+        startLandOrder(slot, target, mode, deploy, goalOwner, seedForComponent);
+        return;
+      }
+    });
+
+    getHB((hb, peerId) => {
+      maybeAdoptHost(hb?.hostId || peerId);
+      if (peerId !== hostId) return;
+      lastHeartbeatAt = Date.now();
+
+      if (hb?.tokenConflict) {
+        token = crypto.randomUUID();
+        sessionStorage.setItem(SESSION_KEY, token);
+        location.reload();
+        return;
+      }
+
+      if (Array.isArray(hb?.slotToPeer) && hb.slotToPeer.length === MAX_PLAYERS + 1) slotToPeer = hb.slotToPeer.slice();
+      if (Array.isArray(hb?.slotToToken) && hb.slotToToken.length === MAX_PLAYERS + 1) {
+        slotToToken = hb.slotToToken.slice();
+        tokenToSlot = new Map();
+        for (let s = 1; s <= MAX_PLAYERS; s++) if (slotToToken[s]) tokenToSlot.set(slotToToken[s], s);
+      }
+
+      peerToSlot = new Map();
+      for (let s = 1; s <= MAX_PLAYERS; s++) if (slotToPeer[s]) peerToSlot.set(slotToPeer[s], s);
+      const myS = tokenToSlot.get(token);
+      if (myS) peerToSlot.set(selfId, myS);
+
+      applyLobbyPayload(hb?.lobby);
+
+      uiDirty = true;
+    });
+
+    getDelta((msg, peerId) => {
+      if (peerId !== hostId) return;
+      applyLobbyPayload(msg?.lobby);
+      if (!gameStarted && !(msg?.gameStarted)) {
+        // Host is still in lobby; deltas are only for lobby/UI sync.
+        uiDirty = true;
+        return;
+      }
+
+      const { u } = msg || {};
+      if (Array.isArray(u)) {
+        for (const it of u) {
+          const i = it[0], o = it[1], hp = it[2];
+          if (i < 0 || i >= CELL_COUNT) continue;
+          owner[i] = o; cellHP[i] = hp;
+        }
+      }
+
+      if (Array.isArray(msg?.pArmy)) pArmy = Int32Array.from(msg.pArmy);
+      if (Array.isArray(msg?.pArmyCap)) pArmyCap = Int32Array.from(msg.pArmyCap);
+      if (Array.isArray(msg?.pPop)) pPop = Int32Array.from(msg.pPop);
+      if (Array.isArray(msg?.pPopCap)) pPopCap = Int32Array.from(msg.pPopCap);
+      if (Array.isArray(msg?.pArea)) pArea = Int32Array.from(msg.pArea);
+      if (Array.isArray(msg?.eliminated)) eliminated = Int8Array.from(msg.eliminated);
+
+      clientOrders = unpackOrders(msg?.orders);
+      uiDirty = true;
+    });
+
+    getSnap((snap, peerId) => {
+      if (peerId !== hostId) return;
+      if (!snap || snap.GW !== GW || snap.GH !== GH) return;
+
+      slotToPeer = snap.slotToPeer.slice();
+      slotToToken = snap.slotToToken.slice();
+
+      tokenToSlot = new Map();
+      for (let s = 1; s <= MAX_PLAYERS; s++) if (slotToToken[s]) tokenToSlot.set(slotToToken[s], s);
+
+      peerToSlot = new Map();
+      for (let s = 1; s <= MAX_PLAYERS; s++) if (slotToPeer[s]) peerToSlot.set(slotToPeer[s], s);
+      const myS = tokenToSlot.get(token);
+      if (myS) peerToSlot.set(selfId, myS);
+
+      owner = Int16Array.from(snap.owner);
+      cellHP = Int16Array.from(snap.cellHP);
+
+      pArmy = Int32Array.from(snap.pArmy);
+      pArmyCap = Int32Array.from(snap.pArmyCap);
+
+      pPop = Int32Array.from(snap.pPop);
+      pPopCap = Int32Array.from(snap.pPopCap);
+
+      pArea = Int32Array.from(snap.pArea);
+      eliminated = Int8Array.from(snap.eliminated || new Array(MAX_PLAYERS + 1).fill(0));
+
+      clientOrders = unpackOrders(snap?.orders);
+
+      applyLobbyPayload(snap?.lobby);
+
+      gameStarted = !!snap?.gameStarted;
+      uiDirty = true;
+    });
+
+    // -----------------------------
+    // Room events
+    // -----------------------------
+    room.onPeerJoin(pid => {
+      connectedPeers.add(pid);
+      // Do NOT re-elect host on every join; we rely on host heartbeats.
+      sendHello({ token });
+      uiDirty = true;
+    });
+
+    room.onPeerLeave(pid => {
+      connectedPeers.delete(pid);
+
+      if (isHost) {
+        const s = peerToSlot.get(pid);
+        if (s) {
+          slotToPeer[s] = null;
+          peerToSlot.delete(pid);
+        }
+      }
+
+      // If the known host disconnected, allow timeout logic to elect a new host.
+      if (!isHost && pid === hostId) hostId = null;
+
+      uiDirty = true;
+    });
+
+    resetBtn.onclick = async () => { if (isHost) resetToLobbyHost(); };
+
+    // -----------------------------
+    // Client input
+    // -----------------------------
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    canvas.addEventListener('mousemove', (e) => {
+      const p = mouseToCell(e);
+      hoverIdx = p ? idx(p.x, p.y) : -1;
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      // Left button is handled via pointerup so drag can pan; keep right-click cancel.
+      if (e.button === 0) return;
+      handleMapPress(e);
+    });
+
+    
+    function handleMapPress(e) {
+      // Shared click/tap handler (used after drag-vs-click is resolved).
+      if (isPanning) return;
+
+      const p = mouseToCell(e);
+      if (!p) return;
+      const i = idx(p.x, p.y);
+
+      
+
+// Biome region config click/drag (host-only)
+if (!biomeCfgOverlay.hidden && isHost) {
+  const sel = parseInt(cfgBiomeSelectEl.value || '1', 10) || 1;
+  const biomeId = e.shiftKey ? 0 : sel;
+  addBiomeRectFromCells(p, p, biomeId);
+  return;
+}
+
+      // Nation spawn config pick (host-only)
+      if (!nationCfgOverlay.hidden && nationCfgPickMode && isHost) {
+        const k = String(cfgNationSelectEl.value || '').toUpperCase();
+        if (NATION_KEYS.has(k)) {
+          nationSpawns[k] = { x: p.x | 0, y: p.y | 0 };
+          refreshNationCfgUI();
+          try { localStorage.setItem(NATION_SPAWNS_KEY, JSON.stringify(nationSpawns)); } catch {}
+          setNetLabel(`${k} set to x=${p.x}, y=${p.y}`, 'good');
+        }
+        return;
+      }
+
+      const slot = mySlot();
+      if (!slot) return;
+
+      if (e.button === 2) {
+        selectedIdx = -1;
+        sendManualSeed(-1);
+        return;
+      }
+
+      if (owner[i] === -2) {
+        selectedIdx = -1;
+        sendManualSeed(-1);
+        return;
+      }
+
+      if (localMode === 1) {
+        if (owner[i] === slot) {
+          selectedIdx = i;
+          sendManualSeed(i);
+          return;
+        }
+        if (selectedIdx < 0) return;
+        sendSetTarget(i, 1);
+        return;
+      }
+
+      selectedIdx = -1;
+      sendManualSeed(-1);
+
+      if (owner[i] !== slot) sendSetTarget(i, 0);
+    }
+
+function mouseToCell(e) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left);
+      const my = (e.clientY - rect.top);
+
+      const { wx, wy } = screenToWorld(mx, my);
+
+      const x = Math.floor(wx / MAP_SCALE);
+      const y = Math.floor(wy / MAP_SCALE);
+      if (!inBounds(x, y)) return null;
+      return { x, y };
+    }
+
+    function sendSetTarget(target, mode) {
+      if (!gameStarted) return;
+      const frac = clamp(localSendPct / 100, ORDER_MIN_PCT, ORDER_MAX_PCT);
+      if (!hostId) return;
+
+      // host-self fast path
+      if (hostId === selfId && isHost) {
+        handleHostCmdSelf({ type: 'setTarget', target, mode, frac });
+        return;
+      }
+
+      sendCmd({ type: 'setTarget', target, mode, frac }, hostId);
+    }
+
+    function handleHostCmdSelf(cmd) {
+      const slot = tokenToSlot.get(token) || peerToSlot.get(selfId) || 0;
+      if (!slot || eliminated[slot]) return;
+
+      // Lobby commands (available before match start too)
+      if (cmd?.type === 'setName') {
+        lobbyNames[slot] = sanitizeName(cmd.name);
+        lobbyDirty = true;
+        uiDirty = true;
+        return;
+      }
+      if (cmd?.type === 'setReady') {
+        lobbyReady[slot] = cmd.ready ? 1 : 0;
+        lobbyDirty = true;
+        uiDirty = true;
+        return;
+      }
+
+      if (cmd?.type !== 'setTarget') return;
+
+      const target = cmd.target | 0;
+      const mode = (cmd.mode | 0) ? 1 : 0;
+      const frac = clamp(Number(cmd.frac ?? 0.20), ORDER_MIN_PCT, ORDER_MAX_PCT);
+
+      if (target < 0 || target >= CELL_COUNT) return;
+      if (owner[target] === -2) return;
+
+      const canDeploy = pArmy[slot];
+      const wantDeploy = Math.floor(canDeploy * frac);
+      const deploy = clamp(Math.max(ORDER_MIN_DEPLOY, wantDeploy), 0, canDeploy);
+      if (deploy <= 0) return;
+
+      pArmy[slot] -= deploy;
+      uiDirty = true;
+
+      const goalOwner = owner[target];
+
+      let seedForComponent = -1;
+      if (mode === 1 && manualSeed[slot] >= 0 && owner[manualSeed[slot]] === slot) seedForComponent = manualSeed[slot];
+      if (seedForComponent < 0) seedForComponent = chooseAutoSeed(slot, target);
+
+      if (seedForComponent >= 0 && owner[seedForComponent] === slot && !reachableByLand(seedForComponent, target)) {
+        const desired = (goalOwner >= 1) ? goalOwner : (goalOwner === -1 ? -1 : null);
+        const coastal = findCoastalLandNear(target, desired);
+        if (coastal >= 0 && hasWaterNeighbor(coastal)) {
+          startNavalOrder(slot, coastal, target, mode, deploy, goalOwner, seedForComponent);
+          return;
+        }
+      }
+
+      startLandOrder(slot, target, mode, deploy, goalOwner, seedForComponent);
+    }
+
+    function sendManualSeed(seed) {
+      if (!gameStarted) return;
+      const slot = mySlot();
+      if (!slot || !hostId) return;
+
+      if (hostId === selfId && isHost) {
+        manualSeed[slot] = (seed >= 0 && seed < CELL_COUNT && owner[seed] === slot) ? seed : -1;
+        return;
+      }
+      sendCmd({ type: 'setManualSeed', seed }, hostId);
+    }
+
+    function requestSnapshot() {
+      if (!hostId || hostId === selfId) return;
+      sendCmd({ type: 'requestSnap' }, hostId);
+    }
+
+    // -----------------------------
+    // Rendering
+    // -----------------------------
+    function draw() {
+
+      if (!isHost && canHostNow() && lastHeartbeatAt && (Date.now() - lastHeartbeatAt) > HOST_DEAD_MS) {
+        maybeAdoptHost(desiredHostFromKnownPeers());
+        lastHeartbeatAt = 0;
+        sendHello({ token });
+        requestSnapshot();
+      }
+
+      // Host doesn't receive its own deltas; mirror its orders into clientOrders for dots/boats.
+      if (isHost) clientOrders = unpackOrders(packOrders());
+
+      if (uiDirty) {
+        renderPlayerList();
+        renderMyOrdersPanel();
+        uiDirty = false;
+      }
+
+      if (lobbyDirty || !gameStarted || lobbyPhase === 0) {
+        // Show lobby until match starts; allow closing manually.
+        if (!gameStarted && lobbyPhase === 0 && !lobbySuppressed) setLobbyVisible(true);
+        if (gameStarted || lobbyPhase === 1) setLobbyVisible(false);
+        renderLobbyPlayers();
+        lobbyDirty = false;
+      }
+
+      if (hoverIdx >= 0) {
+        const o = owner[hoverIdx];
+        const who = (o === -2) ? 'Water' : (o === -1) ? 'Neutral' : `P${o}`;
+        if (o >= 1) {
+          const deployed = sumDeployedFor(o);
+          hoverInfoEl.textContent = `owner=${who}  army(avail)=${pArmy[o]}  deployed=${deployed}  pop=${pPop[o]}  area=${pArea[o]}  cellHP=${cellHP[hoverIdx]}/${PLAYER_HP}`;
+        } else if (o === -1) {
+          hoverInfoEl.textContent = `owner=${who}  cellHP=${cellHP[hoverIdx]}/${NEUTRAL_HP}`;
+        } else {
+          hoverInfoEl.textContent = `owner=${who}`;
+        }
+      } else hoverInfoEl.textContent = '—';
+
+      const s = mySlot();
+      if (s) {
+        const deployed = sumDeployedFor(s);
+        myStatsEl.textContent = `army(avail)=${pArmy[s]} / ${pArmyCap[s]}  deployed=${deployed}  pop=${pPop[s]} / ${pPopCap[s]}  area=${pArea[s]}  mode=${localMode ? 'manual' : 'auto'}`;
+      } else myStatsEl.textContent = 'spectator';
+
+      // draw map with HP shading so borders visibly weaken
+      const data = img.data;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const o = owner[i];
+        const c = colorForOwner(o);
+
+        let shade = 1.0;
+        if (o === -2) shade = 0.78;
+
+        if (o !== -2) {
+          const maxHp = (o === -1) ? NEUTRAL_HP : PLAYER_HP;
+          const hp = clamp(cellHP[i], 0, maxHp);
+          const frac = maxHp > 0 ? (hp / maxHp) : 1;
+          shade *= (0.55 + 0.45 * frac);
+        }
+
+        const p = i * 4;
+        data[p]     = Math.floor(c[0] * shade);
+        data[p + 1] = Math.floor(c[1] * shade);
+        
+data[p + 2] = Math.floor(c[2] * shade);
+
+// Biome tint overlay (always visible; stronger while config is open)
+{
+  const showBiomes = biomeCfgActive || SHOW_BIOMES_ON_MAP;
+  if (showBiomes) {
+    const bid = biomeMap[i] | 0;
+    if (bid && o !== -2) {
+      const bc = biomeColorFor(bid);
+      if (bc) {
+        const a = biomeCfgActive ? BIOME_ALPHA_CONFIG : BIOME_ALPHA_PLAY;
+        data[p]     = Math.floor(data[p]     * (1 - a) + bc[0] * a);
+        data[p + 1] = Math.floor(data[p + 1] * (1 - a) + bc[1] * a);
+        data[p + 2] = Math.floor(data[p + 2] * (1 - a) + bc[2] * a);
+      }
+    }
+  }
+}
+
+data[p + 3] = 255;
+      }
+
+      if (selectedIdx >= 0) {
+        const p = selectedIdx * 4;
+        data[p] = palette.select[0]; data[p + 1] = palette.select[1]; data[p + 2] = palette.select[2]; data[p + 3] = 255;
+      }
+
+      // highlight all my active targets
+      if (s) {
+        for (const o of clientOrders) {
+          if (o.slot !== s) continue;
+          const t = (o.target | 0);
+          if (t < 0 || t >= CELL_COUNT) continue;
+          const p = t * 4;
+          data[p] = palette.target[0]; data[p + 1] = palette.target[1]; data[p + 2] = palette.target[2]; data[p + 3] = 255;
+        }
+      }
+
+      offCtx.putImageData(img, 0, 0);
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.setTransform(viewScale, 0, 0, viewScale, -viewX * viewScale, -viewY * viewScale);
+
+      // Background (optional): draw the mask image faintly so the world silhouette is visible.
+      if (landMaskImage) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.globalAlpha = 0.18;
+        ctx.drawImage(landMaskImage, 0, 0, WORLD_W, WORLD_H);
+        ctx.globalAlpha = 1;
+      }
+
+      // Territory pixels (scaled up so the full world is 10x larger in world-space).
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(off, 0, 0, WORLD_W, WORLD_H);
+
+      
+
+// Biome drag preview (only while Biome Config is open)
+if (!biomeCfgOverlay.hidden && biomeDragActive && biomeDragStart && biomeDragEnd) {
+  const x1 = Math.min(biomeDragStart.x, biomeDragEnd.x);
+  const y1 = Math.min(biomeDragStart.y, biomeDragEnd.y);
+  const x2 = Math.max(biomeDragStart.x, biomeDragEnd.x);
+  const y2 = Math.max(biomeDragStart.y, biomeDragEnd.y);
+  const wx = x1 * MAP_SCALE;
+  const wy = y1 * MAP_SCALE;
+  const ww = (x2 - x1 + 1) * MAP_SCALE;
+  const wh = (y2 - y1 + 1) * MAP_SCALE;
+
+  const sel = parseInt(cfgBiomeSelectEl.value || '1', 10) || 1;
+  const bid = sel | 0;
+  const bc = biomeColorFor(bid) || [220, 220, 220];
+
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = `rgb(${bc[0]},${bc[1]},${bc[2]})`;
+  ctx.fillRect(wx, wy, ww, wh);
+  ctx.globalAlpha = 0.65;
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth = 0.18 * MAP_SCALE;
+  ctx.strokeRect(wx, wy, ww, wh);
+  ctx.restore();
+}
+
+      // Nation spawn markers (visible while Nation Config is open)
+      if (!nationCfgOverlay.hidden) {
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        for (const n of NATIONS) {
+          const v = nationSpawns[n.key];
+          if (!v) continue;
+          const wx = (v.x + 0.5) * MAP_SCALE;
+          const wy = (v.y + 0.5) * MAP_SCALE;
+          const isSel = String(cfgNationSelectEl.value || '').toUpperCase() === n.key;
+          ctx.fillStyle = isSel ? 'white' : 'rgba(255,255,255,0.65)';
+          const sz = isSel ? 8 : 5;
+          ctx.fillRect(wx - sz * 0.5, wy - sz * 0.5, sz, sz);
+        }
+        ctx.restore();
+      }
+
+      // boats (draw as small moving dots)
+      for (const o of clientOrders) {
+        if (!o.boatActive) continue;
+        const col = palette['p' + o.slot] || [240,240,240];
+        ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+        const bx = o.boatX * MAP_SCALE;
+        const by = o.boatY * MAP_SCALE;
+        ctx.beginPath();
+        ctx.arc(bx, by, 0.55 * MAP_SCALE, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+        ctx.lineWidth = 0.12 * MAP_SCALE;
+        ctx.stroke();
+      }
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      debugEl.textContent =
+        `role=${isHost ? 'HOST' : 'client'} host=${shortId(hostId)} slot=${mySlot() || 'spectator'} peers=${activePeerIdsInclSelf().length} tick=${tick} orders=${clientOrders.length}`;
+
+      requestAnimationFrame(draw);
+    }
+
+    // -----------------------------
+    // Boot
+    // -----------------------------
+    function boot() {
+      for (let i = 0; i < CELL_COUNT; i++) { owner[i] = -1; cellHP[i] = 0; }
+
+      const fit = Math.min(canvas.width / WORLD_W, canvas.height / WORLD_H);
+      viewScale = fit;
+      viewX = 0; viewY = 0;
+      clampView();
+      // Wait for host heartbeats; a delayed self-host fallback is set earlier.
+      setNetLabel('Connecting…', 'warn');
+
+      setTimeout(() => sendHello({ token }), 250);
+      setTimeout(() => { if (!isHost) requestSnapshot(); }, 1200);
+
+      requestAnimationFrame(draw);
+    }
+
+    boot();
+  
+}
+</script>
+</body>
+</html>
