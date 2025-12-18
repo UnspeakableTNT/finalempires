@@ -22,7 +22,12 @@ export async function onRequestGet({ request, env }) {
     "Vary": "Origin"
   });
 
-  const app = env.METERED_APPNAME;
+  const appRaw = (env.METERED_APPNAME || "").trim();
+  const app = appRaw
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/\.metered\.live$/i, "");
+
   const apiKey = env.METERED_API_KEY;
 
   if (!app || !apiKey) {
