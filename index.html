@@ -2079,26 +2079,139 @@ const BIOME_RECTS_HARDCODED = [
       'wss://tracker.webtorrent.dev'
     ];
 
+
+    // -----------------------------
+    // WebRTC ICE config
+    // Default: STUN-only (exact v16 behavior; no TURN, no /api/ice)
+    // Optional: School Wi-Fi Mode (Relay) is opt-in only (TURN via /api/ice)
+    // -----------------------------
+    const RELAY_FLAG_KEY = 'pc_relay_opt_in';
+    const RELAY_ICE_KEY = 'pc_relay_ice_servers';
+    const RELAY_POPUP_DELAY_MS = 10000; // ~8–12s after joining
+
+    let relayActive = false;
+    let relayPopupTimer = null;
+    let relayPopupShown = false;
+    let relayPopupEl = null;
+
+    function hideRelayPopup() {
+      if (!relayPopupEl) return;
+      try { relayPopupEl.remove(); } catch (_) {}
+      relayPopupEl = null;
+    }
+
+    function ensureRelayPopup() {
+      if (relayPopupEl) return relayPopupEl;
+
+      const el = document.createElement('div');
+      el.id = 'relayPopup';
+      el.style.cssText = [
+        'position:fixed',
+        'right:16px',
+        'bottom:16px',
+        'max-width:340px',
+        'padding:12px',
+        'border-radius:10px',
+        'background:rgba(10,10,12,0.92)',
+        'border:1px solid rgba(255,255,255,0.18)',
+        'box-shadow:0 10px 24px rgba(0,0,0,0.45)',
+        'z-index:9999',
+        'font:12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+        'color:#fff'
+      ].join(';');
+
+      el.innerHTML = `
+        <div style="margin-bottom:10px;">
+          Having trouble connecting? Try <b>School Wi‑Fi Mode (Relay)</b>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button id="relayTryBtn" style="padding:6px 10px; cursor:pointer;">Try</button>
+          <button id="relayNoBtn" style="padding:6px 10px; cursor:pointer;">Not now</button>
+        </div>
+        <div id="relayErr" style="margin-top:8px; display:none; color:#ffb3b3;">
+          Relay server not available on this host.
+        </div>
+      `;
+
+      document.body.appendChild(el);
+      relayPopupEl = el;
+
+      const tryBtn = el.querySelector('#relayTryBtn');
+      const noBtn = el.querySelector('#relayNoBtn');
+      const errEl = el.querySelector('#relayErr');
+
+      noBtn.onclick = () => hideRelayPopup();
+
+      tryBtn.onclick = async () => {
+        console.log('[NET] enabling relay mode only when user clicks Try');
+
+        tryBtn.disabled = true;
+        noBtn.disabled = true;
+        errEl.style.display = 'none';
+
+        try {
+          const resp = await fetch('/api/ice', { cache: 'no-store' });
+          if (!resp.ok) throw new Error('ice endpoint not ok');
+
+          const data = await resp.json();
+          const iceServers = Array.isArray(data)
+            ? data
+            : (Array.isArray(data?.iceServers) ? data.iceServers : []);
+
+          if (!Array.isArray(iceServers) || iceServers.length === 0) throw new Error('no ice servers');
+
+          console.log('[ICE] loaded', iceServers.length);
+
+          sessionStorage.setItem(RELAY_FLAG_KEY, '1');
+          sessionStorage.setItem(RELAY_ICE_KEY, JSON.stringify(iceServers));
+
+          // Reload is the simplest clean reconnect without refactoring game state.
+          location.reload();
+        } catch (e) {
+          errEl.textContent = 'Relay server not available on this host.';
+          errEl.style.display = 'block';
+          tryBtn.disabled = false;
+          noBtn.disabled = false;
+        }
+      };
+
+      return el;
+    }
+
+    function showRelayPopup() {
+      if (relayActive || relayPopupShown) return;
+      relayPopupShown = true;
+      console.log('[NET] showing relay popup when popup appears');
+      ensureRelayPopup();
+    }
+
+    const relayOptIn = sessionStorage.getItem(RELAY_FLAG_KEY) === '1';
+
+    if (!relayOptIn) console.log('[NET] normal mode on startup');
+
     const rtcConfig = {
       iceServers: [
         { urls: ['stun:stun.l.google.com:19302'] },
         { urls: ['stun:stun1.l.google.com:19302'] },
-        { urls: ['stun:stun2.l.google.com:19302'] },
-            // ADD TURN (this is the important part)
-        {
-          urls: [
-            // UDP (fast when allowed)
-            'turn:YOUR_TURN_DOMAIN:3478?transport=udp',
-            // TCP (often works when UDP is blocked)
-            'turn:YOUR_TURN_DOMAIN:3478?transport=tcp',
-            // TLS over 443 (best chance on strict networks)
-            'turns:YOUR_TURN_DOMAIN:443?transport=tcp'
-          ],
-          username: 'TURN_USER',
-          credential: 'TURN_PASS'
-        }
+        { urls: ['stun:stun2.l.google.com:19302'] }
       ]
     };
+
+    if (relayOptIn) {
+      try {
+        const extra = JSON.parse(sessionStorage.getItem(RELAY_ICE_KEY) || '[]');
+        if (Array.isArray(extra) && extra.length) {
+          rtcConfig.iceServers = rtcConfig.iceServers.concat(extra);
+          rtcConfig.iceTransportPolicy = 'relay';
+          relayActive = true;
+        }
+      } catch (_) {}
+
+      // One-shot opt-in for this reload; avoids any accidental TURN on future refreshes.
+      sessionStorage.removeItem(RELAY_FLAG_KEY);
+      sessionStorage.removeItem(RELAY_ICE_KEY);
+    }
+
 
     const roomId = initialRoomId;
     document.getElementById('roomLabel').textContent = roomId;
@@ -3150,6 +3263,15 @@ if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
     let tokenToSlot = new Map();
 
     const connectedPeers = new Set();
+
+    // Offer opt-in relay if no peer connects soon (School Wi-Fi Mode)
+    if (!relayActive) {
+      relayPopupTimer = setTimeout(() => {
+        if (relayActive) return;
+        if (connectedPeers.size > 0) return;
+        showRelayPopup();
+      }, RELAY_POPUP_DELAY_MS);
+    }
 
     let hostId = null;
     let isHost = false;
@@ -4472,6 +4594,8 @@ function colorForOwner(o) {
     // -----------------------------
     room.onPeerJoin(pid => {
       connectedPeers.add(pid);
+      if (relayPopupTimer) { clearTimeout(relayPopupTimer); relayPopupTimer = null; }
+      hideRelayPopup();
       // Do NOT re-elect host on every join; we rely on host heartbeats.
       sendHello({ token });
       uiDirty = true;
