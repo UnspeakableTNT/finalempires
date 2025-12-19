@@ -247,6 +247,67 @@
       max-height: calc(100% - 28px);
       overflow:auto;
     }
+
+    /* // === BUILDINGS SYSTEM BEGIN === */
+    #buildBar{
+      position:fixed;
+      left:0; right:0; bottom:0;
+      z-index:45;
+      border-top:1px solid #1a2330;
+      background:rgba(14,20,28,0.92);
+      backdrop-filter: blur(6px);
+      padding:10px 12px;
+      display:flex;
+      justify-content:center;
+      pointer-events:none;
+    }
+    #buildBar .buildBarInner{
+      width:min(980px, calc(100% - 18px));
+      display:flex;
+      align-items:center;
+      gap:10px;
+      pointer-events:auto;
+    }
+    #buildMoney{
+      opacity:.85;
+      padding:6px 10px;
+      border:1px solid #223047;
+      border-radius:999px;
+      background:#0b1220;
+      white-space:nowrap;
+    }
+    .buildBtn{
+      position:relative;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .buildBtn.active{
+      outline:2px solid #5b83ff;
+      outline-offset:1px;
+      filter:brightness(1.08);
+    }
+    .buildBtn .cost{
+      opacity:.85;
+    }
+    .buildBtn[data-tip]:hover::after{
+      content:attr(data-tip);
+      position:absolute;
+      left:50%;
+      transform:translateX(-50%);
+      bottom:46px;
+      background:rgba(8,12,18,0.96);
+      border:1px solid #223047;
+      border-radius:10px;
+      padding:8px 10px;
+      white-space:nowrap;
+      font-size:12px;
+      line-height:1.2;
+      box-shadow:0 10px 26px rgba(0,0,0,0.45);
+      pointer-events:none;
+      z-index:60;
+    }
+    /* // === BUILDINGS SYSTEM END === */
 </style>
 </head>
 <body>
@@ -524,6 +585,18 @@
     </div>
   </div>
 
+
+  <!-- // === BUILDINGS SYSTEM BEGIN === -->
+  <div id="buildBar">
+    <div class="buildBarInner">
+      <div id="buildMoney" class="mono">Money: <span id="moneyVal">0</span></div>
+      <button id="buildCityBtn" class="buildBtn" data-tip="City: boosts population cap and growth on tiles you control. Captured cities become foreign (no bonus) until you retake the tile.">
+        <span>City</span>
+        <span id="buildCityCost" class="mono cost"></span>
+      </button>
+    </div>
+  </div>
+  <!-- // === BUILDINGS SYSTEM END === -->
   <script src="countries195.js"></script>
   <script type="module">
     import { joinRoom, selfId } from 'https://esm.run/trystero/torrent';
@@ -2049,6 +2122,31 @@ const BIOME_RECTS_HARDCODED = [
 
     const POP_BASE_PROD_PER_SEC = 7;
     const POP_PROD_PER_CELL_PER_SEC = 0.10;
+    // === BUILDINGS SYSTEM BEGIN ===
+    // Buildings (host-authoritative). Compact record format: [kind, tileIdx, originalOwnerSlot, count] repeated.
+    const BLD_KIND_CITY = 1;
+
+    // Money (added now for buildings). Host-authoritative.
+    const START_MONEY = 200;
+
+    // Passive money income (slow on purpose; tune up in later versions).
+    // Host-authoritative and synced like other stats.
+    const MONEY_BASE_INCOME_PER_SEC = 0.50;
+    const MONEY_PER_ACTIVE_CITY_PER_SEC = 0.25;
+
+    // City economy (cost scales with total Cities you have built, up to a max).
+    const CITY_BASE_COST = 60;
+    const CITY_COST_STEP = 25;
+    const CITY_MAX_COST  = 260;
+
+    // City bonuses (only apply when the original owner controls the tile; otherwise the City is foreign and gives no bonus).
+    const CITY_POP_CAP_BONUS_PER_CITY    = 60;
+    const CITY_POP_GROWTH_BONUS_PER_CITY = 0.90;
+
+    // City stacking (levels) on the same tile (still one building record per tile).
+    const CITY_MAX_STACK_PER_TILE = 9;
+    // === BUILDINGS SYSTEM END ===
+
 
     // HP (kept relatively low so conquest doesn't feel slow)
     const PLAYER_HP = 12;
@@ -2079,26 +2177,139 @@ const BIOME_RECTS_HARDCODED = [
       'wss://tracker.webtorrent.dev'
     ];
 
+
+    // -----------------------------
+    // WebRTC ICE config
+    // Default: STUN-only (exact v16 behavior; no TURN, no /api/ice)
+    // Optional: School Wi-Fi Mode (Relay) is opt-in only (TURN via /api/ice)
+    // -----------------------------
+    const RELAY_FLAG_KEY = 'pc_relay_opt_in';
+    const RELAY_ICE_KEY = 'pc_relay_ice_servers';
+    const RELAY_POPUP_DELAY_MS = 10000; // ~8–12s after joining
+
+    let relayActive = false;
+    let relayPopupTimer = null;
+    let relayPopupShown = false;
+    let relayPopupEl = null;
+
+    function hideRelayPopup() {
+      if (!relayPopupEl) return;
+      try { relayPopupEl.remove(); } catch (_) {}
+      relayPopupEl = null;
+    }
+
+    function ensureRelayPopup() {
+      if (relayPopupEl) return relayPopupEl;
+
+      const el = document.createElement('div');
+      el.id = 'relayPopup';
+      el.style.cssText = [
+        'position:fixed',
+        'right:16px',
+        'bottom:16px',
+        'max-width:340px',
+        'padding:12px',
+        'border-radius:10px',
+        'background:rgba(10,10,12,0.92)',
+        'border:1px solid rgba(255,255,255,0.18)',
+        'box-shadow:0 10px 24px rgba(0,0,0,0.45)',
+        'z-index:9999',
+        'font:12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+        'color:#fff'
+      ].join(';');
+
+      el.innerHTML = `
+        <div style="margin-bottom:10px;">
+          Having trouble connecting? Try <b>School Wi‑Fi Mode (Relay)</b>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button id="relayTryBtn" style="padding:6px 10px; cursor:pointer;">Try</button>
+          <button id="relayNoBtn" style="padding:6px 10px; cursor:pointer;">Not now</button>
+        </div>
+        <div id="relayErr" style="margin-top:8px; display:none; color:#ffb3b3;">
+          Relay server not available on this host.
+        </div>
+      `;
+
+      document.body.appendChild(el);
+      relayPopupEl = el;
+
+      const tryBtn = el.querySelector('#relayTryBtn');
+      const noBtn = el.querySelector('#relayNoBtn');
+      const errEl = el.querySelector('#relayErr');
+
+      noBtn.onclick = () => hideRelayPopup();
+
+      tryBtn.onclick = async () => {
+        console.log('[NET] enabling relay mode only when user clicks Try');
+
+        tryBtn.disabled = true;
+        noBtn.disabled = true;
+        errEl.style.display = 'none';
+
+        try {
+          const resp = await fetch('/api/ice', { cache: 'no-store' });
+          if (!resp.ok) throw new Error('ice endpoint not ok');
+
+          const data = await resp.json();
+          const iceServers = Array.isArray(data)
+            ? data
+            : (Array.isArray(data?.iceServers) ? data.iceServers : []);
+
+          if (!Array.isArray(iceServers) || iceServers.length === 0) throw new Error('no ice servers');
+
+          console.log('[ICE] loaded', iceServers.length);
+
+          sessionStorage.setItem(RELAY_FLAG_KEY, '1');
+          sessionStorage.setItem(RELAY_ICE_KEY, JSON.stringify(iceServers));
+
+          // Reload is the simplest clean reconnect without refactoring game state.
+          location.reload();
+        } catch (e) {
+          errEl.textContent = 'Relay server not available on this host.';
+          errEl.style.display = 'block';
+          tryBtn.disabled = false;
+          noBtn.disabled = false;
+        }
+      };
+
+      return el;
+    }
+
+    function showRelayPopup() {
+      if (relayActive || relayPopupShown) return;
+      relayPopupShown = true;
+      console.log('[NET] showing relay popup when popup appears');
+      ensureRelayPopup();
+    }
+
+    const relayOptIn = sessionStorage.getItem(RELAY_FLAG_KEY) === '1';
+
+    if (!relayOptIn) console.log('[NET] normal mode on startup');
+
     const rtcConfig = {
       iceServers: [
         { urls: ['stun:stun.l.google.com:19302'] },
         { urls: ['stun:stun1.l.google.com:19302'] },
-        { urls: ['stun:stun2.l.google.com:19302'] },
-            // ADD TURN (this is the important part)
-        {
-          urls: [
-            // UDP (fast when allowed)
-            'turn:YOUR_TURN_DOMAIN:3478?transport=udp',
-            // TCP (often works when UDP is blocked)
-            'turn:YOUR_TURN_DOMAIN:3478?transport=tcp',
-            // TLS over 443 (best chance on strict networks)
-            'turns:YOUR_TURN_DOMAIN:443?transport=tcp'
-          ],
-          username: 'TURN_USER',
-          credential: 'TURN_PASS'
-        }
+        { urls: ['stun:stun2.l.google.com:19302'] }
       ]
     };
+
+    if (relayOptIn) {
+      try {
+        const extra = JSON.parse(sessionStorage.getItem(RELAY_ICE_KEY) || '[]');
+        if (Array.isArray(extra) && extra.length) {
+          rtcConfig.iceServers = rtcConfig.iceServers.concat(extra);
+          rtcConfig.iceTransportPolicy = 'relay';
+          relayActive = true;
+        }
+      } catch (_) {}
+
+      // One-shot opt-in for this reload; avoids any accidental TURN on future refreshes.
+      sessionStorage.removeItem(RELAY_FLAG_KEY);
+      sessionStorage.removeItem(RELAY_ICE_KEY);
+    }
+
 
     const roomId = initialRoomId;
     document.getElementById('roomLabel').textContent = roomId;
@@ -2134,6 +2345,211 @@ const BIOME_RECTS_HARDCODED = [
     const hoverInfoEl = document.getElementById('hoverInfo');
     const myStatsEl = document.getElementById('myStats');
     const ordersPanelEl = document.getElementById('ordersPanel');
+    // === BUILDINGS SYSTEM BEGIN ===
+    const buildBarEl = document.getElementById('buildBar');
+    const moneyValEl = document.getElementById('moneyVal');
+    const buildCityBtn = document.getElementById('buildCityBtn');
+    const buildCityCostEl = document.getElementById('buildCityCost');
+
+    var BLD_STRIDE = 4;
+
+    function bldFindAt(tileIdx) {
+      tileIdx |= 0;
+      if (!bld || !bld.length) return -1;
+      for (let k = 0; k < bld.length; k += BLD_STRIDE) {
+        if ((bld[k + 1] | 0) === tileIdx) return k;
+      }
+      return -1;
+    }
+
+    function bldTotalCitiesBuiltBy(slot) {
+      slot |= 0;
+      if (!slot || !bld || !bld.length) return 0;
+      let n = 0;
+      for (let k = 0; k < bld.length; k += BLD_STRIDE) {
+        if ((bld[k] | 0) === BLD_KIND_CITY && (bld[k + 2] | 0) === slot) n += (bld[k + 3] | 0);
+      }
+      return n;
+    }
+
+    function bldActiveCitiesFor(slot) {
+      slot |= 0;
+      if (!slot || !bld || !bld.length) return 0;
+      let n = 0;
+      for (let k = 0; k < bld.length; k += BLD_STRIDE) {
+        if ((bld[k] | 0) !== BLD_KIND_CITY) continue;
+        const tile = bld[k + 1] | 0;
+        const orig = bld[k + 2] | 0;
+        const cnt  = bld[k + 3] | 0;
+        if (orig !== slot) continue;
+        if (tile < 0 || tile >= CELL_COUNT) continue;
+        if ((owner[tile] | 0) !== slot) continue; // foreign if you don't control the tile
+        if ((owner[tile] | 0) === -2) continue;
+        n += cnt;
+      }
+      return n;
+    }
+
+    // City marker sprites (used when zoomed in)
+    const CITY_SPRITE_PX = 12;
+    const citySpriteCache = new Map();
+    function getCitySpriteForSlot(slot) {
+      slot |= 0;
+      if (!slot) slot = 1;
+      const key = slot | 0;
+      const cached = citySpriteCache.get(key);
+      if (cached) return cached;
+
+      const c = document.createElement('canvas');
+      c.width = CITY_SPRITE_PX;
+      c.height = CITY_SPRITE_PX;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+
+      const col = colorForOwner(key);
+
+      // base
+      g.clearRect(0, 0, CITY_SPRITE_PX, CITY_SPRITE_PX);
+      g.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+      g.fillRect(0, 0, CITY_SPRITE_PX, CITY_SPRITE_PX);
+
+      // border
+      g.fillStyle = 'rgba(0,0,0,0.45)';
+      g.fillRect(0, 0, CITY_SPRITE_PX, 1);
+      g.fillRect(0, CITY_SPRITE_PX - 1, CITY_SPRITE_PX, 1);
+      g.fillRect(0, 0, 1, CITY_SPRITE_PX);
+      g.fillRect(CITY_SPRITE_PX - 1, 0, 1, CITY_SPRITE_PX);
+
+      // skyline (simple pixel art)
+      g.fillStyle = 'rgba(255,255,255,0.92)';
+      g.fillRect(2, 6, 2, 4);
+      g.fillRect(5, 4, 2, 6);
+      g.fillRect(8, 5, 2, 5);
+      g.fillRect(6, 2, 1, 2); // antenna
+
+      // a couple of "windows" for texture
+      g.fillStyle = 'rgba(0,0,0,0.30)';
+      g.fillRect(2, 7, 2, 1);
+      g.fillRect(5, 6, 2, 1);
+      g.fillRect(8, 7, 2, 1);
+
+      citySpriteCache.set(key, c);
+      return c;
+    }
+
+
+    function cityCostFor(slot) {
+      const built = bldTotalCitiesBuiltBy(slot);
+      return Math.min(CITY_BASE_COST + built * CITY_COST_STEP, CITY_MAX_COST);
+    }
+
+    function canPlaceCityClient(slot, tile) {
+      if (!slot) return false;
+      if (!gameStarted) return false;
+      if (tile < 0 || tile >= CELL_COUNT) return false;
+      if (owner[tile] === -2) return false;
+      if (owner[tile] !== slot) return false;
+
+      const k = bldFindAt(tile);
+      if (k < 0) return true;
+
+      // one building record per tile; allow stacking only if this City belongs to you
+      if (bld[k] !== BLD_KIND_CITY) return false;
+      if ((bld[k + 2] | 0) !== slot) return false;
+      if ((bld[k + 3] | 0) >= CITY_MAX_STACK_PER_TILE) return false;
+      return true;
+    }
+
+    function setPlacingCity(on) {
+      placingCity = !!on;
+      renderBuildBar();
+    }
+
+    function renderBuildBar() {
+      if (!buildBarEl) return;
+      const s = mySlot();
+      const alive = s && !eliminated[s];
+      const money = (s ? (pMoney[s] | 0) : 0);
+
+      if (moneyValEl) moneyValEl.textContent = String(money);
+
+      const cost = (s ? cityCostFor(s) : CITY_BASE_COST);
+      if (buildCityCostEl) buildCityCostEl.textContent = `($${cost})`;
+
+      if (!buildCityBtn) return;
+      const affordable = alive && gameStarted && (money >= cost);
+      buildCityBtn.disabled = !(alive && gameStarted) || !affordable;
+      buildCityBtn.classList.toggle('active', placingCity);
+
+      // If the button became disabled while active (spent money), automatically exit placement.
+      if (placingCity && (!alive || !gameStarted || money < cost)) setPlacingCity(false);
+    }
+
+    function requestBuildCity(tileIdx) {
+      if (!gameStarted) return;
+      const slot = mySlot();
+      if (!slot) return;
+      const cost = cityCostFor(slot);
+      if ((pMoney[slot] | 0) < cost) return;
+      if (!canPlaceCityClient(slot, tileIdx)) return;
+
+      // Host-authoritative: host validates & commits. Non-host clients send a request to host.
+      if (isHost) {
+        hostTryPlaceCity(slot, tileIdx | 0);
+        return;
+      }
+
+      if (!hostId) return;
+      sendCmd({ type: 'build', kind: BLD_KIND_CITY, tile: tileIdx | 0 }, hostId);
+    }
+
+    function hostTryPlaceCity(slot, tileIdx) {
+      if (!isHost || !gameStarted) return false;
+      if (!slot || eliminated[slot]) return false;
+      if (tileIdx < 0 || tileIdx >= CELL_COUNT) return false;
+      if (owner[tileIdx] === -2) return false;
+      if (owner[tileIdx] !== slot) return false;
+
+      const cost = cityCostFor(slot);
+      if ((pMoney[slot] | 0) < cost) return false;
+
+      // update building record (one per tile; stack only if owned by original owner)
+      let arr = Array.from(bld);
+      let found = -1;
+      for (let k = 0; k < arr.length; k += BLD_STRIDE) {
+        if ((arr[k + 1] | 0) === tileIdx) { found = k; break; }
+      }
+
+      if (found >= 0) {
+        if ((arr[found] | 0) !== BLD_KIND_CITY) return false;
+        if ((arr[found + 2] | 0) !== slot) return false; // can't build on foreign city
+        const next = (arr[found + 3] | 0) + 1;
+        if (next > CITY_MAX_STACK_PER_TILE) return false;
+        arr[found + 3] = next;
+      } else {
+        arr.push(BLD_KIND_CITY, tileIdx | 0, slot | 0, 1);
+      }
+
+      // pay and commit
+      pMoney[slot] -= cost;
+      bld = Int32Array.from(arr);
+      bldDirty = true;
+
+      updateCapsFor(slot);
+      uiDirty = true;
+      return true;
+    }
+
+    if (buildCityBtn) {
+      buildCityBtn.addEventListener('click', () => {
+        if (!gameStarted) return;
+        const s = mySlot();
+        if (!s || eliminated[s]) return;
+        setPlacingCity(!placingCity);
+      });
+    }
+    // === BUILDINGS SYSTEM END ===
+
 
     const hostLabel = document.getElementById('hostLabel');
     const slotLabel = document.getElementById('slotLabel');
@@ -2456,6 +2872,12 @@ if (lobbyNationCfgBtnEl) lobbyNationCfgBtnEl.hidden = true;
       pArmy.fill(0); pArmyCap.fill(0);
       pPop.fill(0); pPopCap.fill(0);
       pArea.fill(0);
+      // === BUILDINGS SYSTEM BEGIN ===
+      pMoney.fill(0);
+      bld = new Int32Array(0);
+      bldDirty = true;
+      placingCity = false;
+      // === BUILDINGS SYSTEM END ===
       eliminated.fill(0);
       hostOrders = Array(MAX_PLAYERS + 1).fill(null).map(() => []);
       nextOrderId = 1;
@@ -2975,6 +3397,9 @@ if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') { spaceDown = true; e.preventDefault(); }
       if (e.key === 'Escape') {
+        // === BUILDINGS SYSTEM BEGIN ===
+        if (placingCity) { setPlacingCity(false); return; }
+        // === BUILDINGS SYSTEM END ===
         selectedIdx = -1;
         sendManualSeed(-1);
       }
@@ -3139,6 +3564,17 @@ if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
     let pPopCap = new Int32Array(MAX_PLAYERS + 1);
 
     let pArea = new Int32Array(MAX_PLAYERS + 1);
+    // === BUILDINGS SYSTEM BEGIN ===
+    let pMoney = new Int32Array(MAX_PLAYERS + 1);
+
+    // Buildings storage (compact, sync'd via snap + delta)
+    let bld = new Int32Array(0);
+    let bldDirty = false;
+
+    // Client-side placement mode
+    let placingCity = false;
+    // === BUILDINGS SYSTEM END ===
+
 
     // eliminated => spectator
     let eliminated = new Int8Array(MAX_PLAYERS + 1);
@@ -3150,6 +3586,15 @@ if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
     let tokenToSlot = new Map();
 
     const connectedPeers = new Set();
+
+    // Offer opt-in relay if no peer connects soon (School Wi-Fi Mode)
+    if (!relayActive) {
+      relayPopupTimer = setTimeout(() => {
+        if (relayActive) return;
+        if (connectedPeers.size > 0) return;
+        showRelayPopup();
+      }, RELAY_POPUP_DELAY_MS);
+    }
 
     let hostId = null;
     let isHost = false;
@@ -3168,6 +3613,7 @@ if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
 
     const armyAcc = new Float32Array(MAX_PLAYERS + 1);
     const popAcc = new Float32Array(MAX_PLAYERS + 1);
+    const moneyAcc = new Float32Array(MAX_PLAYERS + 1);
 
     const pendingCell = new Map();
     let uiDirty = true;
@@ -3468,10 +3914,16 @@ function colorForOwner(o) {
       pArmy.fill(0); pArmyCap.fill(0);
       pPop.fill(0); pPopCap.fill(0);
       pArea.fill(0);
+      // === BUILDINGS SYSTEM BEGIN ===
+      pMoney.fill(0);
+      bld = new Int32Array(0);
+      bldDirty = true;
+      placingCity = false;
+      // === BUILDINGS SYSTEM END ===
 
       eliminated.fill(0);
 
-      armyAcc.fill(0); popAcc.fill(0);
+      armyAcc.fill(0); popAcc.fill(0); moneyAcc.fill(0);
       manualSeed.fill(-1);
 
       hostOrders = Array(MAX_PLAYERS + 1).fill(null).map(() => []);
@@ -3480,6 +3932,12 @@ function colorForOwner(o) {
       for (let s = 1; s <= MAX_PLAYERS; s++) {
         if (slotToToken[s]) spawnCapitalBlob(s, lobbyNation[s]);
       }
+
+      // === BUILDINGS SYSTEM BEGIN ===
+      for (let s = 1; s <= MAX_PLAYERS; s++) {
+        if (slotToToken[s]) pMoney[s] = START_MONEY;
+      }
+      // === BUILDINGS SYSTEM END ===
 
       recomputeAreasCapsFull();
       for (let s = 1; s <= MAX_PLAYERS; s++) {
@@ -3567,7 +4025,10 @@ function colorForOwner(o) {
       pArmyCap[s] = Math.floor(ARMY_CAP_BASE + pArea[s] * ARMY_CAP_PER_CELL);
       pArmy[s] = clamp(pArmy[s], 0, pArmyCap[s]);
 
-      pPopCap[s] = Math.floor(POP_CAP_BASE + pArea[s] * POP_CAP_PER_CELL);
+      // === BUILDINGS SYSTEM BEGIN ===
+      const cityActive = bldActiveCitiesFor(s);
+      pPopCap[s] = Math.floor(POP_CAP_BASE + pArea[s] * POP_CAP_PER_CELL + cityActive * CITY_POP_CAP_BONUS_PER_CITY);
+      // === BUILDINGS SYSTEM END ===
       pPop[s] = clamp(pPop[s], 0, pPopCap[s]);
 
       uiDirty = true;
@@ -4179,7 +4640,18 @@ function colorForOwner(o) {
             uiDirty = true;
           }
 
-          popAcc[s] += (POP_BASE_PROD_PER_SEC + (pArea[s] * POP_PROD_PER_CELL_PER_SEC)) / TICK_HZ;
+          // === BUILDINGS SYSTEM BEGIN ===
+        const cityActive = bldActiveCitiesFor(s);
+        popAcc[s] += (POP_BASE_PROD_PER_SEC + (pArea[s] * POP_PROD_PER_CELL_PER_SEC) + (cityActive * CITY_POP_GROWTH_BONUS_PER_CITY)) / TICK_HZ;
+
+        moneyAcc[s] += (MONEY_BASE_INCOME_PER_SEC + (cityActive * MONEY_PER_ACTIVE_CITY_PER_SEC)) / TICK_HZ;
+        const mAdd = Math.floor(moneyAcc[s]);
+        if (mAdd >= 1) {
+          moneyAcc[s] -= mAdd;
+          pMoney[s] = (pMoney[s] + mAdd) | 0;
+          uiDirty = true;
+        }
+        // === BUILDINGS SYSTEM END ===
           const pAdd = Math.floor(popAcc[s]);
           if (pAdd >= 1) {
             popAcc[s] -= pAdd;
@@ -4237,7 +4709,8 @@ function colorForOwner(o) {
       for (const [i, v] of pendingCell.entries()) u.push([i, v[0], v[1]]);
       pendingCell.clear();
 
-      sendDelta({
+      // === BUILDINGS SYSTEM BEGIN ===
+      const delta = {
         tick,
         gameStarted: !!gameStarted,
         lobby: lobbyPayload(),
@@ -4247,9 +4720,16 @@ function colorForOwner(o) {
         pPop: Array.from(pPop),
         pPopCap: Array.from(pPopCap),
         pArea: Array.from(pArea),
+        pMoney: Array.from(pMoney),
         eliminated: Array.from(eliminated),
         orders: packOrders()
-      });
+      };
+      if (bldDirty) {
+        delta.bld = Array.from(bld);
+        bldDirty = false;
+      }
+      sendDelta(delta);
+      // === BUILDINGS SYSTEM END ===
 
       uiDirty = false;
     }
@@ -4268,6 +4748,10 @@ function colorForOwner(o) {
         pPop: Array.from(pPop),
         pPopCap: Array.from(pPopCap),
         pArea: Array.from(pArea),
+        // === BUILDINGS SYSTEM BEGIN ===
+        pMoney: Array.from(pMoney),
+        bld: Array.from(bld),
+        // === BUILDINGS SYSTEM END ===
         eliminated: Array.from(eliminated),
 
         orders: packOrders()
@@ -4290,6 +4774,9 @@ function colorForOwner(o) {
 
       if (slot && gameStarted && !lobbyLocked && !eliminated[slot] && pArea[slot] === 0) {
         spawnCapitalBlob(slot);
+        // === BUILDINGS SYSTEM BEGIN ===
+        pMoney[slot] = Math.max(pMoney[slot] | 0, START_MONEY);
+        // === BUILDINGS SYSTEM END ===
         updateCapsFor(slot);
         pArmy[slot] = clamp(pArmy[slot] + 60, 0, pArmyCap[slot]);
         pPop[slot]  = clamp(pPop[slot] + 200, 0, pPopCap[slot]);
@@ -4336,6 +4823,13 @@ function colorForOwner(o) {
 
       if (cmd?.type === 'clearOrders') { clearAllOrders(slot, true); return; }
       if (cmd?.type === 'requestSnap') { broadcastSnapshot(peerId); return; }
+
+      if (cmd?.type === 'build') {
+        // === BUILDINGS SYSTEM BEGIN ===
+        if ((cmd.kind | 0) === BLD_KIND_CITY) hostTryPlaceCity(slot, cmd.tile | 0);
+        // === BUILDINGS SYSTEM END ===
+        return;
+      }
 
       if (cmd?.type === 'setTarget') {
         const target = cmd.target | 0;
@@ -4426,6 +4920,10 @@ function colorForOwner(o) {
       if (Array.isArray(msg?.pPop)) pPop = Int32Array.from(msg.pPop);
       if (Array.isArray(msg?.pPopCap)) pPopCap = Int32Array.from(msg.pPopCap);
       if (Array.isArray(msg?.pArea)) pArea = Int32Array.from(msg.pArea);
+      // === BUILDINGS SYSTEM BEGIN ===
+      if (Array.isArray(msg?.pMoney)) { pMoney = Int32Array.from(msg.pMoney); uiDirty = true; }
+      if (Array.isArray(msg?.bld)) { bld = Int32Array.from(msg.bld); uiDirty = true; }
+      // === BUILDINGS SYSTEM END ===
       if (Array.isArray(msg?.eliminated)) eliminated = Int8Array.from(msg.eliminated);
 
       clientOrders = unpackOrders(msg?.orders);
@@ -4457,6 +4955,10 @@ function colorForOwner(o) {
       pPopCap = Int32Array.from(snap.pPopCap);
 
       pArea = Int32Array.from(snap.pArea);
+      // === BUILDINGS SYSTEM BEGIN ===
+      if (Array.isArray(snap?.pMoney)) pMoney = Int32Array.from(snap.pMoney);
+      if (Array.isArray(snap?.bld)) bld = Int32Array.from(snap.bld);
+      // === BUILDINGS SYSTEM END ===
       eliminated = Int8Array.from(snap.eliminated || new Array(MAX_PLAYERS + 1).fill(0));
 
       clientOrders = unpackOrders(snap?.orders);
@@ -4472,6 +4974,8 @@ function colorForOwner(o) {
     // -----------------------------
     room.onPeerJoin(pid => {
       connectedPeers.add(pid);
+      if (relayPopupTimer) { clearTimeout(relayPopupTimer); relayPopupTimer = null; }
+      hideRelayPopup();
       // Do NOT re-elect host on every join; we rely on host heartbeats.
       sendHello({ token });
       uiDirty = true;
@@ -4545,6 +5049,14 @@ if (!biomeCfgOverlay.hidden && isHost) {
 
       const slot = mySlot();
       if (!slot) return;
+
+      // === BUILDINGS SYSTEM BEGIN ===
+      if (placingCity) {
+        if (e.button !== 0) return; // cancel via City button or Esc
+        requestBuildCity(i);
+        return;
+      }
+      // === BUILDINGS SYSTEM END ===
 
       if (e.button === 2) {
         selectedIdx = -1;
@@ -4620,6 +5132,13 @@ function mouseToCell(e) {
         return;
       }
 
+      if (cmd?.type === 'build') {
+        // === BUILDINGS SYSTEM BEGIN ===
+        if ((cmd.kind | 0) === BLD_KIND_CITY) hostTryPlaceCity(slot, cmd.tile | 0);
+        // === BUILDINGS SYSTEM END ===
+        return;
+      }
+
       if (cmd?.type !== 'setTarget') return;
 
       const target = cmd.target | 0;
@@ -4690,6 +5209,9 @@ function mouseToCell(e) {
       if (uiDirty) {
         renderPlayerList();
         renderMyOrdersPanel();
+        // === BUILDINGS SYSTEM BEGIN ===
+        renderBuildBar();
+        // === BUILDINGS SYSTEM END ===
         uiDirty = false;
       }
 
@@ -4717,7 +5239,9 @@ function mouseToCell(e) {
       const s = mySlot();
       if (s) {
         const deployed = sumDeployedFor(s);
-        myStatsEl.textContent = `army(avail)=${pArmy[s]} / ${pArmyCap[s]}  deployed=${deployed}  pop=${pPop[s]} / ${pPopCap[s]}  area=${pArea[s]}  mode=${localMode ? 'manual' : 'auto'}`;
+        // === BUILDINGS SYSTEM BEGIN ===
+      myStatsEl.textContent = `army(avail)=${pArmy[s]} / ${pArmyCap[s]}  pop=${pPop[s]} / ${pPopCap[s]}  money=$${pMoney[s]}  area=${pArea[s]}  mode=${localMode ? 'manual' : 'auto'}`;
+      // === BUILDINGS SYSTEM END ===
       } else myStatsEl.textContent = 'spectator';
 
       // draw map with HP shading so borders visibly weaken
@@ -4796,6 +5320,96 @@ data[p + 3] = 255;
       // Territory pixels (scaled up so the full world is 10x larger in world-space).
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(off, 0, 0, WORLD_W, WORLD_H);
+
+      // === BUILDINGS SYSTEM BEGIN ===
+      // Draw City markers:
+      // - Zoomed out: colored circle with a small skyline icon.
+      // - Zoomed in: pixel-art sprite.
+      if (bld && bld.length) {
+        const cellPx = MAP_SCALE * viewScale; // approx screen pixels per cell
+        const detailed = cellPx >= 18;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const labelSize = Math.max(9, Math.round(11 / Math.max(0.0001, viewScale))); // keep labels readable when zoomed out
+        ctx.font = `${labelSize}px ui-monospace, system-ui`;
+
+        for (let k = 0; k < bld.length; k += BLD_STRIDE) {
+          if ((bld[k] | 0) !== BLD_KIND_CITY) continue;
+          const tile = bld[k + 1] | 0;
+          const orig = bld[k + 2] | 0;
+          const cnt  = bld[k + 3] | 0;
+          if (tile < 0 || tile >= CELL_COUNT) continue;
+
+          const cx = ((tile % GW) + 0.5) * MAP_SCALE;
+          const cy = ((Math.floor(tile / GW)) + 0.5) * MAP_SCALE;
+
+          const active = (owner[tile] === orig) && (owner[tile] !== -2);
+          ctx.globalAlpha = active ? 0.95 : 0.45;
+
+          if (detailed) {
+            const spr = getCitySpriteForSlot(orig);
+            const sz = MAP_SCALE * 0.92;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(spr, cx - sz * 0.5, cy - sz * 0.5, sz, sz);
+          } else {
+            const col = colorForOwner(orig);
+            // Keep markers visible as you zoom out by sizing them in screen-pixels (then converting to world units).
+            const minPxR = 12;
+            const maxPxR = 28;
+            const invZoom = 1 / Math.max(0.0001, viewScale); // bigger when zoomed out
+            const pxR = Math.min(maxPxR, minPxR + Math.max(0, invZoom - 1) * 2.5); // gently grows with zoom-out
+            const r = pxR / (viewScale*2);
+
+            // circle base
+            ctx.beginPath();
+            ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.lineWidth = Math.max(1, Math.max(1.6, pxR * 0.22) / Math.max(0.0001, viewScale));
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // tiny skyline "logo"
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            const baseY = cy + r * 0.32;
+            ctx.fillRect(cx - r * 0.55, baseY - r * 0.75, r * 0.28, r * 0.75);
+            ctx.fillRect(cx - r * 0.15, baseY - r * 1.05, r * 0.32, r * 1.05);
+            ctx.fillRect(cx + r * 0.25, baseY - r * 0.90, r * 0.28, r * 0.90);
+            ctx.fillRect(cx - r * 0.01, cy - r * 1.15, r * 0.05, r * 0.25); // antenna
+          }
+
+          // stack count (only when stacked) — shown underneath the marker
+          if ((cnt | 0) > 1) {
+            ctx.globalAlpha = 1;
+            const yText = cy + (MAP_SCALE * 0.62);
+            ctx.lineWidth = Math.max(1, MAP_SCALE * 0.10);
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.fillStyle = 'rgba(255,255,255,0.96)';
+            ctx.strokeText(String(cnt), cx, yText);
+            ctx.fillText(String(cnt), cx, yText);
+          }
+        }
+        ctx.restore();
+      }
+
+      // Placement preview for Cities
+      if (placingCity && mySlot()) {
+        const tile = hoverIdx | 0;
+        if (tile >= 0 && tile < CELL_COUNT) {
+          const ok = canPlaceCityClient(mySlot(), tile);
+          const x = (tile % GW) * MAP_SCALE;
+          const y = (Math.floor(tile / GW)) * MAP_SCALE;
+
+          ctx.save();
+          ctx.globalAlpha = ok ? 0.30 : 0.18;
+          ctx.fillStyle = ok ? '#5b83ff' : '#ff5b5b';
+          ctx.fillRect(x, y, MAP_SCALE, MAP_SCALE);
+          ctx.restore();
+        }
+      }
+      // === BUILDINGS SYSTEM END ===
 
       
 
