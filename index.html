@@ -247,31 +247,6 @@
       max-height: calc(100% - 28px);
       overflow:auto;
     }
-
-    /* Relay help prompt (only shown if connections stall) */
-    #relayOverlay{
-      position:fixed;
-      inset:0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:rgba(0,0,0,.55);
-      z-index:99999;
-      padding:16px;
-    }
-    #relayOverlay[hidden]{ display:none; }
-    #relayOverlay .roleCard{ max-width:640px; width:100%; }
-    #relayOverlay .roleP{ margin-top:8px; }
-    #relayOverlay .relayBadge{
-      display:inline-block;
-      font-size:12px;
-      padding:4px 8px;
-      border-radius:999px;
-      background:rgba(255,255,255,.12);
-      margin-left:8px;
-      vertical-align:middle;
-    }
-
 </style>
 </head>
 <body>
@@ -502,32 +477,6 @@
   </div>
 </div>
 
-    
-    <!-- Connectivity help / Relay prompt -->
-    <div id="relayOverlay" hidden>
-      <div class="roleCard">
-        <div class="roleTop">
-          <div>
-            <h2>Having trouble connecting?</h2>
-            <div class="roleHint">
-              Some school / restricted Wi‑Fi networks block peer‑to‑peer (UDP). You can try <b>School Wi‑Fi Mode</b> (TURN relay) to route traffic through a relay server.
-              <span class="relayBadge">uses your TURN quota</span>
-            </div>
-          </div>
-        </div>
-
-        <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
-          <button id="relayTryBtn" class="primaryBtn">Try School Wi‑Fi Mode</button>
-          <button id="relayDismissBtn" class="ghostBtn">Not now</button>
-        </div>
-
-        <div class="roleHint" style="margin-top:10px;">
-          Tip: If you’re hosting and nobody can join, both host <i>and</i> joiners may need to enable School Wi‑Fi Mode.
-        </div>
-      </div>
-    </div>
-
-
     <canvas id="game"></canvas>
     <div id="side">
       <h3>Send Troops</h3>
@@ -583,31 +532,6 @@
     const SAVED_KEY = 'px_saved_token_v7';
 
     const qs = new URLSearchParams(location.search);
-    const relayRequested = qs.get('relay') === '1';
-
-    // Where the game fetches TURN credentials from (Cloudflare Pages Functions in Option B)
-    // When hosted on Pages, this will be available at: https://YOUR_SITE.pages.dev/api/ice
-    const ICE_ENDPOINT = '/api/ice';
-
-    function enableRelayAndReload() {
-      try {
-        const u = new URL(location.href);
-        u.searchParams.set('relay', '1');
-        // Keep hash (#roomId) and any existing params (token/code/etc)
-        location.href = u.toString();
-      } catch {
-        // Fallback (shouldn't happen)
-        location.search = (location.search ? location.search + '&' : '?') + 'relay=1';
-      }
-    }
-
-    function fetchIceServers() {
-      // Note: this requires the game to be opened from your Pages domain, not file://
-      return fetch(ICE_ENDPOINT, { cache: 'no-store' })
-        .then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(new Error('ICE fetch failed: ' + r.status + ' ' + t.slice(0,200)))))
-    }
-
-
     let token = qs.get('token') || sessionStorage.getItem(SESSION_KEY);
     if (!token) {
       token = crypto.randomUUID();
@@ -2175,27 +2099,6 @@ const BIOME_RECTS_HARDCODED = [
         }
       ]
     };
-
-    // If relay mode is requested, replace ICE servers with your Metered TURN list and force relay-only.
-    if (relayRequested) {
-      try {
-        if (location.protocol === 'file:') throw new Error('Relay mode requires hosting (not file://). Open the Pages URL.');
-        const ice = await fetchIceServers();
-
-        // Metered typically returns either {iceServers:[...]} or directly an array.
-        const servers = (ice && Array.isArray(ice.iceServers)) ? ice.iceServers : (Array.isArray(ice) ? ice : null);
-        if (servers && servers.length) {
-          rtcConfig.iceServers = servers;
-          rtcConfig.iceTransportPolicy = 'relay';
-          console.log('[ICE] Relay mode enabled. Loaded ICE servers:', servers);
-        } else {
-          console.warn('[ICE] Relay mode requested but ICE response was unexpected:', ice);
-        }
-      } catch (e) {
-        console.warn('[ICE] Failed to enable relay mode; continuing with default ICE config.', e);
-      }
-    }
-
 
     const roomId = initialRoomId;
     document.getElementById('roomLabel').textContent = roomId;
@@ -4568,7 +4471,6 @@ function colorForOwner(o) {
     // Room events
     // -----------------------------
     room.onPeerJoin(pid => {
-      hideRelayOverlay();
       connectedPeers.add(pid);
       // Do NOT re-elect host on every join; we rely on host heartbeats.
       sendHello({ token });
@@ -4591,20 +4493,6 @@ function colorForOwner(o) {
 
       uiDirty = true;
     });
-
-    // If no peers connect after a short time, offer the Relay prompt (user-initiated).
-    // This keeps default behavior unchanged unless the player opts in.
-    setTimeout(() => {
-      try {
-        if (relayRequested) return;
-        const roleOverlay = document.getElementById('roleOverlay');
-        if (roleOverlay && !roleOverlay.hidden) return; // still in Start screen
-        if (typeof connectedPeers !== 'undefined' && connectedPeers.size > 0) return; // already connected
-        showRelayOverlay();
-      } catch {}
-    }, 12000);
-
-
 
     resetBtn.onclick = async () => { if (isHost) resetToLobbyHost(); };
 
