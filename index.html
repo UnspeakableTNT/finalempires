@@ -1486,7 +1486,7 @@ if (!ROLE) {
     // TURN relay (fixes strict networks like many school Wi‑Fi setups)
     // When hosted on Cloudflare Pages, this resolves to same-origin.
     // When opened as a local file (file://), set ICE_FALLBACK_URL to your Pages/custom domain.
-    const ICE_FALLBACK_URL = ${location.origin}/api/ice`;
+    const ICE_FALLBACK_URL = '${location.origin}/api/ice';
     const ICE_URL = (location.protocol === 'http:' || location.protocol === 'https:') ? '/api/ice' : ICE_FALLBACK_URL;
 
     async function fetchIceServers() {
