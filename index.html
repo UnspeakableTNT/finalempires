@@ -177,6 +177,30 @@
       z-index:60;
     }
     #nationCfgOverlay[hidden]{ display:none; }
+
+
+/* -----------------------------
+   Biome Config overlay (host tool)
+   ----------------------------- */
+#biomeCfgOverlay{
+  position:absolute; inset:0;
+  display:flex; align-items:flex-start; justify-content:flex-start;
+  padding:14px;
+  background:transparent;
+  pointer-events:none;
+  z-index:65;
+}
+#biomeCfgOverlay[hidden]{ display:none; }
+#biomeCfgOverlay .cfgCard{ pointer-events:auto; }
+.biomeSwatch{
+  display:inline-block;
+  width:12px; height:12px;
+  border-radius:3px;
+  border:1px solid rgba(255,255,255,0.25);
+  margin-right:8px;
+  vertical-align:-2px;
+}
+
     .cfgCard{
       width:min(980px, calc(100% - 28px));
       border:1px solid #223047;
@@ -244,7 +268,8 @@
       <button id="saveTokBtn">Save Token</button>
       <button id="restoreTokBtn">Restore Saved</button>
       <button id="lobbyBtn">Lobby</button>
-      <button id="nationCfgBtn">Nation Config</button>
+      <button id="nationCfgBtn" hidden>Nation Config</button>
+      <button id="biomeCfgBtn">Biome Config</button>
       <button id="resetBtn">Reset Match (host)</button>
     </div>
   </div>
@@ -338,7 +363,8 @@
             <div id="lobbyPlayers" class="lobbyPlayers"></div>
 
             <div class="actionsBar">
-              <button id="lobbyNationCfgBtn" class="ghostBtn">Configure Country Locations</button>
+              <button id="lobbyNationCfgBtn" class="ghostBtn" hidden>Configure Country Locations</button>
+              <button id="lobbyBiomeCfgBtn" class="ghostBtn">Configure Biomes</button>
               <button id="startMatchBtn" class="good">Start Match (host)</button>
               <button id="leaveLobbyBtn" class="ghostBtn">Close Lobby</button>
             </div>
@@ -398,7 +424,60 @@
       </div>
     </div>
 
-        <canvas id="game"></canvas>
+        
+
+<div id="biomeCfgOverlay" hidden>
+  <div class="cfgCard">
+    <div class="cfgTop">
+      <div>
+        <h2>Biome Region Config (host)</h2>
+        <div class="lobbyHint">
+          Select a biome and <b>drag</b> rectangles on the map to paint regions.
+          Hold <b>Shift</b> while dragging to erase.
+          Pan with <b>Space + drag</b> (or middle mouse). Zoom with the mouse wheel.
+        </div>
+      </div>
+      <div class="pill">
+        <span class="mono">Rects:</span>
+        <span id="biomeRectCount" class="mono">0</span>
+      </div>
+    </div>
+
+    <div class="cfgGrid">
+      <div class="cfgBox">
+        <div class="mono" style="opacity:.85;">Paint</div>
+        <div class="lobbyRow">
+          <select id="cfgBiomeSelect" title="Choose biome"></select>
+          <button id="biomeUndoBtn" class="ghostBtn">Undo</button>
+          <button id="biomeClearBtn" class="ghostBtn">Clear</button>
+        </div>
+
+        <div class="lobbyHint">
+          <span class="mono">Tip:</span> Left-drag paints a rectangle. Shift+drag erases. Click paints a single cell.
+        </div>
+
+        <div class="mono" style="opacity:.85; margin-top:10px;">Rectangles (newest first)</div>
+        <div id="biomeRectList" class="cfgList"></div>
+      </div>
+
+      <div class="cfgBox">
+        <div class="mono" style="opacity:.85;">Copy to hardcode later</div>
+        <textarea id="biomeCfgOut" class="cfgOut" readonly></textarea>
+
+        <div class="lobbyRow">
+          <button id="biomeCopyBtn">Copy Config</button>
+          <button id="biomeCloseBtn" class="ghostBtn">Close</button>
+        </div>
+
+        <div class="lobbyHint">
+          This is an offline host tool (same idea as the nation tool): copy the snippet and paste it back into your code when you’re ready to hardcode biomes.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    <canvas id="game"></canvas>
     <div id="side">
       <h3>Send Troops</h3>
       <div class="small">
@@ -1424,6 +1503,523 @@ if (!ROLE) {
     };
 
 
+// -----------------------------
+// Biomes (rectangles) - host utility (paint by dragging)
+// -----------------------------
+// IDs are stable (safe for hardcoding).
+const BIOME_DEFS = [
+  { id: 1, key: 'PLAINS',    label: 'Plains',    rgb: [90, 170, 90] },
+  { id: 2, key: 'FOREST',    label: 'Forest',    rgb: [40, 130, 70] },
+  { id: 3, key: 'DESERT',    label: 'Desert',    rgb: [200, 180, 90] },
+  { id: 4, key: 'TUNDRA',    label: 'Tundra',    rgb: [170, 200, 210] },
+  { id: 5, key: 'JUNGLE',    label: 'Jungle',    rgb: [30, 110, 50] },
+  { id: 6, key: 'MOUNTAIN',  label: 'Mountain',  rgb: [150, 150, 160] },
+  { id: 7, key: 'SWAMP',     label: 'Swamp',     rgb: [90, 120, 80] }
+];
+const BIOME_BY_ID = new Map(BIOME_DEFS.map(b => [b.id, b]));
+const BIOME_BY_KEY = new Map(BIOME_DEFS.map(b => [b.key, b]));
+function biomeColorFor(id) {
+  const b = BIOME_BY_ID.get(id | 0);
+  return b ? b.rgb : null;
+}
+
+// Biome visualization
+const SHOW_BIOMES_ON_MAP = true; // set false to disable biome tint during play
+const BIOME_ALPHA_PLAY = 0.18;
+const BIOME_ALPHA_CONFIG = 0.35;
+
+// Optional hardcoded rectangles (paste here once you are ready).
+// Each rect is inclusive coords in grid-cells: x1,y1,x2,y2 (0..GW-1 / 0..GH-1)
+// Paste into index.html near BIOME_RECTS_HARDCODED
+const BIOME_RECTS_HARDCODED = [
+  { x1:0, y1:311, x2:718, y2:359, b:4 }, // TUNDRA
+  { x1:214, y1:299, x2:267, y2:315, b:4 }, // TUNDRA
+  { x1:327, y1:110, x2:418, y2:158, b:3 }, // DESERT
+  { x1:360, y1:105, x2:383, y2:110, b:3 }, // DESERT
+  { x1:422, y1:115, x2:460, y2:127, b:3 }, // DESERT
+  { x1:425, y1:128, x2:480, y2:134, b:3 }, // DESERT
+  { x1:427, y1:132, x2:480, y2:148, b:3 }, // DESERT
+  { x1:438, y1:147, x2:477, y2:154, b:3 }, // DESERT
+  { x1:419, y1:117, x2:421, y2:159, b:1 }, // PLAINS
+  { x1:421, y1:128, x2:424, y2:158, b:1 }, // PLAINS
+  { x1:425, y1:135, x2:426, y2:160, b:1 }, // PLAINS
+  { x1:426, y1:148, x2:437, y2:159, b:1 }, // PLAINS
+  { x1:458, y1:108, x2:487, y2:128, b:3 }, // DESERT
+  { x1:450, y1:105, x2:457, y2:115, b:3 }, // DESERT
+  { x1:454, y1:97, x2:454, y2:97, b:3 }, // DESERT
+  { x1:454, y1:97, x2:488, y2:110, b:3 }, // DESERT
+  { x1:465, y1:90, x2:492, y2:107, b:3 }, // DESERT
+  { x1:481, y1:84, x2:511, y2:98, b:3 }, // DESERT
+  { x1:528, y1:88, x2:554, y2:97, b:3 }, // DESERT
+  { x1:581, y1:215, x2:644, y2:253, b:3 }, // DESERT
+  { x1:120, y1:90, x2:127, y2:94, b:3 }, // DESERT
+  { x1:124, y1:94, x2:129, y2:99, b:3 }, // DESERT
+  { x1:126, y1:100, x2:139, y2:109, b:3 }, // DESERT
+  { x1:131, y1:88, x2:140, y2:90, b:3 }, // DESERT
+  { x1:139, y1:91, x2:145, y2:97, b:3 }, // DESERT
+  { x1:144, y1:101, x2:147, y2:109, b:3 }, // DESERT
+  { x1:144, y1:95, x2:147, y2:101, b:3 }, // DESERT
+  { x1:147, y1:105, x2:151, y2:118, b:3 }, // DESERT
+  { x1:146, y1:118, x2:149, y2:123, b:3 }, // DESERT
+  { x1:148, y1:119, x2:152, y2:126, b:3 }, // DESERT
+  { x1:134, y1:122, x2:146, y2:128, b:3 }, // DESERT
+  { x1:145, y1:128, x2:150, y2:134, b:3 }, // DESERT
+  { x1:206, y1:169, x2:255, y2:190, b:2 }, // FOREST
+  { x1:224, y1:166, x2:249, y2:167, b:2 }, // FOREST
+  { x1:249, y1:168, x2:249, y2:168, b:2 }, // FOREST
+  { x1:221, y1:184, x2:245, y2:201, b:2 }, // FOREST
+  { x1:228, y1:184, x2:252, y2:213, b:2 }, // FOREST
+  { x1:206, y1:179, x2:223, y2:195, b:2 }, // FOREST
+  { x1:217, y1:195, x2:227, y2:201, b:2 }, // FOREST
+  { x1:204, y1:196, x2:226, y2:205, b:2 }, // FOREST
+  { x1:218, y1:162, x2:230, y2:166, b:2 }, // FOREST
+  { x1:264, y1:199, x2:280, y2:224, b:2 }, // FOREST
+  { x1:280, y1:192, x2:287, y2:199, b:2 }, // FOREST
+  { x1:254, y1:220, x2:272, y2:232, b:2 }, // FOREST
+  { x1:229, y1:213, x2:233, y2:247, b:2 }, // FOREST
+  { x1:223, y1:246, x2:230, y2:266, b:2 }, // FOREST
+  { x1:342, y1:59, x2:462, y2:86, b:2 }, // FOREST
+  { x1:397, y1:48, x2:476, y2:63, b:2 }, // FOREST
+  { x1:455, y1:62, x2:511, y2:71, b:2 }, // FOREST
+  { x1:466, y1:69, x2:496, y2:79, b:2 }, // FOREST
+  { x1:498, y1:75, x2:538, y2:76, b:2 }, // FOREST
+  { x1:453, y1:69, x2:499, y2:83, b:2 }, // FOREST
+  { x1:448, y1:83, x2:481, y2:88, b:2 }, // FOREST
+  { x1:500, y1:77, x2:546, y2:82, b:2 }, // FOREST
+  { x1:497, y1:64, x2:560, y2:75, b:2 }, // FOREST
+  { x1:544, y1:73, x2:572, y2:79, b:2 }, // FOREST
+  { x1:478, y1:60, x2:697, y2:88, b:2 }, // FOREST
+  { x1:614, y1:83, x2:682, y2:103, b:2 }, // FOREST
+  { x1:589, y1:75, x2:681, y2:116, b:2 }, // FOREST
+  { x1:597, y1:111, x2:609, y2:131, b:2 }, // FOREST
+  { x1:592, y1:112, x2:605, y2:141, b:2 }, // FOREST
+  { x1:554, y1:140, x2:619, y2:194, b:2 }, // FOREST
+  { x1:537, y1:165, x2:712, y2:201, b:2 }, // FOREST
+  { x1:658, y1:192, x2:716, y2:230, b:2 }, // FOREST
+  { x1:90, y1:73, x2:263, y2:86, b:2 }, // FOREST
+  { x1:151, y1:86, x2:239, y2:93, b:2 }, // FOREST
+  { x1:137, y1:86, x2:170, y2:87, b:2 }, // FOREST
+  { x1:144, y1:88, x2:155, y2:91, b:2 }, // FOREST
+  { x1:181, y1:85, x2:226, y2:97, b:2 }, // FOREST
+  { x1:179, y1:89, x2:229, y2:138, b:2 }, // FOREST
+  { x1:112, y1:83, x2:116, y2:124, b:2 }, // FOREST
+  { x1:116, y1:89, x2:120, y2:118, b:2 }, // FOREST
+  { x1:126, y1:85, x2:130, y2:91, b:2 }, // FOREST
+  { x1:130, y1:92, x2:135, y2:95, b:2 }, // FOREST
+  { x1:132, y1:96, x2:137, y2:97, b:2 }, // FOREST
+  { x1:131, y1:93, x2:134, y2:98, b:2 }, // FOREST
+  { x1:135, y1:92, x2:138, y2:97, b:2 }, // FOREST
+  { x1:129, y1:91, x2:138, y2:93, b:2 }, // FOREST
+  { x1:130, y1:95, x2:138, y2:99, b:2 }, // FOREST
+  { x1:128, y1:92, x2:128, y2:93, b:2 }, // FOREST
+  { x1:138, y1:98, x2:143, y2:99, b:2 }, // FOREST
+  { x1:140, y1:100, x2:143, y2:109, b:2 }, // FOREST
+  { x1:120, y1:95, x2:123, y2:111, b:2 }, // FOREST
+  { x1:123, y1:100, x2:125, y2:111, b:2 }, // FOREST
+  { x1:332, y1:158, x2:390, y2:227, b:2 }, // FOREST
+  { x1:385, y1:174, x2:410, y2:202, b:2 }, // FOREST
+  { x1:452, y1:208, x2:468, y2:226, b:2 }, // FOREST
+  { x1:446, y1:205, x2:463, y2:215, b:2 }, // FOREST
+  { x1:145, y1:88, x2:165, y2:93, b:1 }, // PLAINS
+  { x1:152, y1:94, x2:178, y2:119, b:1 }, // PLAINS
+  { x1:146, y1:94, x2:151, y2:94, b:1 }, // PLAINS
+  { x1:148, y1:95, x2:151, y2:97, b:1 }, // PLAINS
+  { x1:148, y1:99, x2:148, y2:99, b:1 }, // PLAINS
+  { x1:149, y1:98, x2:149, y2:98, b:1 }, // PLAINS
+  { x1:149, y1:98, x2:149, y2:98, b:1 }, // PLAINS
+  { x1:148, y1:98, x2:148, y2:98, b:1 }, // PLAINS
+  { x1:150, y1:99, x2:150, y2:99, b:1 }, // PLAINS
+  { x1:149, y1:99, x2:149, y2:99, b:1 }, // PLAINS
+  { x1:150, y1:98, x2:151, y2:99, b:1 }, // PLAINS
+  { x1:148, y1:100, x2:151, y2:104, b:1 }, // PLAINS
+  { x1:143, y1:90, x2:143, y2:90, b:1 }, // PLAINS
+  { x1:141, y1:90, x2:141, y2:90, b:1 }, // PLAINS
+  { x1:141, y1:89, x2:141, y2:89, b:1 }, // PLAINS
+  { x1:142, y1:89, x2:142, y2:89, b:1 }, // PLAINS
+  { x1:142, y1:88, x2:142, y2:90, b:1 }, // PLAINS
+  { x1:141, y1:88, x2:141, y2:88, b:1 }, // PLAINS
+  { x1:142, y1:88, x2:142, y2:88, b:1 }, // PLAINS
+  { x1:143, y1:88, x2:143, y2:88, b:1 }, // PLAINS
+  { x1:143, y1:89, x2:143, y2:89, b:1 }, // PLAINS
+  { x1:130, y1:87, x2:135, y2:87, b:1 }, // PLAINS
+  { x1:136, y1:87, x2:136, y2:87, b:1 }, // PLAINS
+  { x1:117, y1:87, x2:125, y2:88, b:1 }, // PLAINS
+  { x1:121, y1:89, x2:125, y2:89, b:1 }, // PLAINS
+  { x1:126, y1:110, x2:127, y2:111, b:1 }, // PLAINS
+  { x1:127, y1:111, x2:146, y2:116, b:1 }, // PLAINS
+  { x1:128, y1:110, x2:146, y2:110, b:1 }, // PLAINS
+  { x1:124, y1:112, x2:146, y2:117, b:1 }, // PLAINS
+  { x1:134, y1:118, x2:145, y2:121, b:1 }, // PLAINS
+  { x1:128, y1:118, x2:133, y2:126, b:1 }, // PLAINS
+  { x1:123, y1:113, x2:123, y2:115, b:1 }, // PLAINS
+  { x1:136, y1:129, x2:141, y2:134, b:1 }, // PLAINS
+  { x1:142, y1:129, x2:144, y2:130, b:1 }, // PLAINS
+  { x1:264, y1:187, x2:278, y2:194, b:3 }, // DESERT
+  { x1:265, y1:193, x2:279, y2:197, b:3 }, // DESERT
+  { x1:263, y1:193, x2:268, y2:196, b:3 }, // DESERT
+  { x1:256, y1:169, x2:275, y2:186, b:1 }, // PLAINS
+  { x1:275, y1:186, x2:281, y2:186, b:1 }, // PLAINS
+  { x1:279, y1:186, x2:286, y2:191, b:1 }, // PLAINS
+  { x1:279, y1:192, x2:279, y2:192, b:1 }, // PLAINS
+  { x1:287, y1:190, x2:290, y2:191, b:1 }, // PLAINS
+  { x1:288, y1:192, x2:291, y2:200, b:1 }, // PLAINS
+  { x1:281, y1:200, x2:287, y2:216, b:1 }, // PLAINS
+  { x1:265, y1:198, x2:279, y2:198, b:1 }, // PLAINS
+  { x1:252, y1:197, x2:264, y2:198, b:1 }, // PLAINS
+  { x1:256, y1:187, x2:263, y2:192, b:1 }, // PLAINS
+  { x1:253, y1:191, x2:262, y2:203, b:1 }, // PLAINS
+  { x1:263, y1:199, x2:263, y2:205, b:1 }, // PLAINS
+  { x1:253, y1:215, x2:253, y2:215, b:1 }, // PLAINS
+  { x1:253, y1:204, x2:263, y2:219, b:1 }, // PLAINS
+  { x1:234, y1:214, x2:253, y2:243, b:1 }, // PLAINS
+  { x1:234, y1:244, x2:256, y2:261, b:1 }, // PLAINS
+  { x1:231, y1:248, x2:241, y2:276, b:1 }, // PLAINS
+  { x1:254, y1:233, x2:266, y2:242, b:1 }, // PLAINS
+  { x1:208, y1:265, x2:222, y2:267, b:1 }, // PLAINS
+  { x1:223, y1:267, x2:226, y2:284, b:1 }, // PLAINS
+  { x1:226, y1:284, x2:232, y2:286, b:1 }, // PLAINS
+  { x1:226, y1:267, x2:234, y2:286, b:1 }, // PLAINS
+  { x1:229, y1:275, x2:248, y2:286, b:1 }, // PLAINS
+  { x1:206, y1:268, x2:247, y2:303, b:1 }, // PLAINS
+  { x1:208, y1:206, x2:227, y2:247, b:1 }, // PLAINS
+  { x1:225, y1:202, x2:227, y2:228, b:1 }, // PLAINS
+  { x1:225, y1:228, x2:226, y2:236, b:1 }, // PLAINS
+  { x1:227, y1:214, x2:228, y2:245, b:1 }, // PLAINS
+  { x1:216, y1:248, x2:222, y2:264, b:1 }, // PLAINS
+  { x1:209, y1:249, x2:217, y2:269, b:1 }, // PLAINS
+  { x1:140, y1:143, x2:209, y2:166, b:1 }, // PLAINS
+  { x1:169, y1:133, x2:188, y2:149, b:1 }, // PLAINS
+  { x1:207, y1:156, x2:217, y2:168, b:1 }, // PLAINS
+  { x1:218, y1:158, x2:218, y2:161, b:1 }, // PLAINS
+  { x1:219, y1:158, x2:219, y2:160, b:1 }, // PLAINS
+  { x1:219, y1:158, x2:220, y2:161, b:1 }, // PLAINS
+  { x1:218, y1:154, x2:229, y2:161, b:1 }, // PLAINS
+  { x1:218, y1:167, x2:223, y2:168, b:1 }, // PLAINS
+  { x1:224, y1:168, x2:251, y2:168, b:1 }, // PLAINS
+  { x1:231, y1:158, x2:242, y2:165, b:1 }, // PLAINS
+  { x1:230, y1:161, x2:230, y2:161, b:1 }, // PLAINS
+  { x1:230, y1:160, x2:230, y2:160, b:1 }, // PLAINS
+  { x1:237, y1:159, x2:237, y2:159, b:1 }, // PLAINS
+  { x1:237, y1:155, x2:237, y2:155, b:1 }, // PLAINS
+  { x1:238, y1:153, x2:238, y2:153, b:1 }, // PLAINS
+  { x1:238, y1:153, x2:238, y2:153, b:1 }, // PLAINS
+  { x1:238, y1:152, x2:238, y2:152, b:1 }, // PLAINS
+  { x1:238, y1:152, x2:238, y2:152, b:1 }, // PLAINS
+  { x1:238, y1:151, x2:238, y2:151, b:1 }, // PLAINS
+  { x1:237, y1:148, x2:237, y2:148, b:1 }, // PLAINS
+  { x1:237, y1:149, x2:237, y2:149, b:1 }, // PLAINS
+  { x1:237, y1:148, x2:237, y2:148, b:1 }, // PLAINS
+  { x1:237, y1:147, x2:237, y2:147, b:1 }, // PLAINS
+  { x1:215, y1:140, x2:215, y2:141, b:1 }, // PLAINS
+  { x1:215, y1:141, x2:234, y2:145, b:1 }, // PLAINS
+  { x1:205, y1:139, x2:206, y2:140, b:1 }, // PLAINS
+  { x1:207, y1:139, x2:210, y2:140, b:1 }, // PLAINS
+  { x1:204, y1:139, x2:204, y2:139, b:1 }, // PLAINS
+  { x1:212, y1:143, x2:212, y2:143, b:1 }, // PLAINS
+  { x1:213, y1:143, x2:213, y2:143, b:1 }, // PLAINS
+  { x1:147, y1:124, x2:147, y2:127, b:1 }, // PLAINS
+  { x1:148, y1:127, x2:153, y2:127, b:1 }, // PLAINS
+  { x1:153, y1:120, x2:178, y2:131, b:1 }, // PLAINS
+  { x1:151, y1:127, x2:169, y2:142, b:1 }, // PLAINS
+  { x1:148, y1:135, x2:150, y2:141, b:1 }, // PLAINS
+  { x1:147, y1:136, x2:147, y2:136, b:1 }, // PLAINS
+  { x1:344, y1:86, x2:399, y2:108, b:1 }, // PLAINS
+  { x1:341, y1:91, x2:351, y2:109, b:1 }, // PLAINS
+  { x1:358, y1:109, x2:358, y2:109, b:1 }, // PLAINS
+  { x1:359, y1:109, x2:359, y2:109, b:1 }, // PLAINS
+  { x1:397, y1:86, x2:449, y2:114, b:1 }, // PLAINS
+  { x1:450, y1:89, x2:453, y2:104, b:1 }, // PLAINS
+  { x1:453, y1:88, x2:464, y2:96, b:1 }, // PLAINS
+  { x1:465, y1:89, x2:481, y2:89, b:1 }, // PLAINS
+  { x1:331, y1:158, x2:367, y2:159, b:1 }, // PLAINS
+  { x1:368, y1:158, x2:375, y2:160, b:1 }, // PLAINS
+  { x1:375, y1:160, x2:382, y2:161, b:1 }, // PLAINS
+  { x1:375, y1:158, x2:395, y2:161, b:1 }, // PLAINS
+  { x1:395, y1:161, x2:415, y2:164, b:1 }, // PLAINS
+  { x1:389, y1:162, x2:410, y2:166, b:1 }, // PLAINS
+  { x1:396, y1:158, x2:422, y2:167, b:1 }, // PLAINS
+  { x1:422, y1:162, x2:446, y2:167, b:1 }, // PLAINS
+  { x1:428, y1:155, x2:462, y2:170, b:1 }, // PLAINS
+  { x1:421, y1:159, x2:429, y2:162, b:1 }, // PLAINS
+  { x1:411, y1:167, x2:458, y2:179, b:1 }, // PLAINS
+  { x1:391, y1:166, x2:413, y2:168, b:1 }, // PLAINS
+  { x1:391, y1:168, x2:416, y2:173, b:1 }, // PLAINS
+  { x1:410, y1:178, x2:453, y2:204, b:1 }, // PLAINS
+  { x1:423, y1:203, x2:442, y2:235, b:1 }, // PLAINS
+  { x1:391, y1:202, x2:425, y2:211, b:1 }, // PLAINS
+  { x1:390, y1:210, x2:420, y2:212, b:1 }, // PLAINS
+  { x1:409, y1:210, x2:428, y2:217, b:1 }, // PLAINS
+  { x1:411, y1:223, x2:429, y2:259, b:1 }, // PLAINS
+  { x1:391, y1:213, x2:410, y2:253, b:3 }, // DESERT
+  { x1:411, y1:230, x2:411, y2:252, b:3 }, // DESERT
+  { x1:413, y1:233, x2:413, y2:266, b:3 }, // DESERT
+  { x1:410, y1:234, x2:412, y2:282, b:3 }, // DESERT
+  { x1:407, y1:237, x2:414, y2:266, b:3 }, // DESERT
+  { x1:377, y1:259, x2:377, y2:259, b:3 }, // DESERT
+  { x1:387, y1:229, x2:399, y2:253, b:3 }, // DESERT
+  { x1:386, y1:228, x2:412, y2:241, b:3 }, // DESERT
+  { x1:411, y1:218, x2:422, y2:223, b:1 }, // PLAINS
+  { x1:448, y1:216, x2:452, y2:233, b:1 }, // PLAINS
+  { x1:447, y1:223, x2:447, y2:241, b:1 }, // PLAINS
+  { x1:450, y1:227, x2:457, y2:235, b:1 }, // PLAINS
+  { x1:482, y1:228, x2:482, y2:228, b:1 }, // PLAINS
+  { x1:469, y1:219, x2:481, y2:225, b:1 }, // PLAINS
+  { x1:700, y1:234, x2:717, y2:277, b:2 }, // FOREST
+  { x1:686, y1:252, x2:699, y2:273, b:2 }, // FOREST
+  { x1:638, y1:266, x2:679, y2:268, b:2 }, // FOREST
+  { x1:631, y1:261, x2:715, y2:288, b:2 }, // FOREST
+  { x1:663, y1:253, x2:663, y2:253, b:2 }, // FOREST
+  { x1:637, y1:253, x2:665, y2:260, b:2 }, // FOREST
+  { x1:655, y1:248, x2:661, y2:252, b:2 }, // FOREST
+  { x1:661, y1:238, x2:664, y2:247, b:2 }, // FOREST
+  { x1:664, y1:230, x2:670, y2:238, b:2 }, // FOREST
+  { x1:662, y1:226, x2:662, y2:246, b:2 }, // FOREST
+  { x1:666, y1:236, x2:674, y2:253, b:2 }, // FOREST
+  { x1:659, y1:230, x2:668, y2:239, b:2 }, // FOREST
+  { x1:666, y1:240, x2:670, y2:260, b:2 }, // FOREST
+  { x1:658, y1:210, x2:664, y2:231, b:2 }, // FOREST
+  { x1:654, y1:206, x2:656, y2:226, b:2 }, // FOREST
+  { x1:657, y1:226, x2:658, y2:226, b:2 }, // FOREST
+  { x1:647, y1:206, x2:658, y2:226, b:2 }, // FOREST
+  { x1:641, y1:205, x2:664, y2:210, b:2 }, // FOREST
+  { x1:632, y1:196, x2:646, y2:202, b:2 }, // FOREST
+  { x1:594, y1:200, x2:654, y2:200, b:2 }, // FOREST
+  { x1:607, y1:203, x2:655, y2:203, b:2 }, // FOREST
+  { x1:638, y1:211, x2:638, y2:211, b:2 }, // FOREST
+  { x1:606, y1:205, x2:639, y2:212, b:2 }, // FOREST
+  { x1:609, y1:206, x2:646, y2:214, b:1 }, // PLAINS
+  { x1:604, y1:213, x2:635, y2:215, b:1 }, // PLAINS
+  { x1:627, y1:215, x2:639, y2:215, b:1 }, // PLAINS
+  { x1:634, y1:214, x2:638, y2:214, b:1 }, // PLAINS
+  { x1:633, y1:216, x2:635, y2:217, b:1 }, // PLAINS
+  { x1:636, y1:217, x2:649, y2:221, b:1 }, // PLAINS
+  { x1:638, y1:215, x2:647, y2:217, b:1 }, // PLAINS
+  { x1:635, y1:215, x2:637, y2:215, b:1 }, // PLAINS
+  { x1:634, y1:215, x2:644, y2:221, b:1 }, // PLAINS
+  { x1:647, y1:221, x2:652, y2:240, b:1 }, // PLAINS
+  { x1:645, y1:222, x2:647, y2:252, b:1 }, // PLAINS
+  { x1:649, y1:237, x2:650, y2:252, b:1 }, // PLAINS
+  { x1:646, y1:226, x2:656, y2:242, b:1 }, // PLAINS
+  { x1:655, y1:228, x2:659, y2:240, b:1 }, // PLAINS
+  { x1:656, y1:238, x2:656, y2:256, b:1 }, // PLAINS
+  { x1:653, y1:242, x2:653, y2:255, b:1 }, // PLAINS
+  { x1:647, y1:242, x2:660, y2:249, b:1 }, // PLAINS
+  { x1:657, y1:240, x2:658, y2:240, b:1 }, // PLAINS
+  { x1:659, y1:241, x2:659, y2:243, b:1 }, // PLAINS
+  { x1:657, y1:240, x2:658, y2:242, b:1 }, // PLAINS
+  { x1:659, y1:239, x2:660, y2:242, b:1 }, // PLAINS
+  { x1:646, y1:249, x2:655, y2:249, b:1 }, // PLAINS
+  { x1:649, y1:250, x2:654, y2:252, b:1 }, // PLAINS
+  { x1:647, y1:250, x2:648, y2:250, b:1 }, // PLAINS
+  { x1:650, y1:253, x2:650, y2:253, b:1 }, // PLAINS
+  { x1:650, y1:253, x2:650, y2:253, b:1 }, // PLAINS
+  { x1:649, y1:252, x2:649, y2:252, b:1 }, // PLAINS
+  { x1:649, y1:252, x2:649, y2:252, b:1 }, // PLAINS
+  { x1:649, y1:252, x2:649, y2:252, b:1 }, // PLAINS
+  { x1:649, y1:252, x2:649, y2:252, b:1 }, // PLAINS
+  { x1:648, y1:251, x2:648, y2:251, b:1 }, // PLAINS
+  { x1:648, y1:251, x2:648, y2:251, b:1 }, // PLAINS
+  { x1:648, y1:253, x2:648, y2:253, b:1 }, // PLAINS
+  { x1:648, y1:252, x2:648, y2:252, b:1 }, // PLAINS
+  { x1:621, y1:202, x2:633, y2:204, b:1 }, // PLAINS
+  { x1:644, y1:204, x2:647, y2:204, b:1 }, // PLAINS
+  { x1:514, y1:92, x2:525, y2:108, b:1 }, // PLAINS
+  { x1:513, y1:89, x2:525, y2:109, b:1 }, // PLAINS
+  { x1:474, y1:84, x2:529, y2:89, b:1 }, // PLAINS
+  { x1:512, y1:89, x2:527, y2:113, b:1 }, // PLAINS
+  { x1:493, y1:98, x2:538, y2:172, b:1 }, // PLAINS
+  { x1:488, y1:108, x2:492, y2:112, b:1 }, // PLAINS
+  { x1:489, y1:112, x2:503, y2:205, b:1 }, // PLAINS
+  { x1:488, y1:113, x2:488, y2:129, b:1 }, // PLAINS
+  { x1:481, y1:129, x2:487, y2:129, b:1 }, // PLAINS
+  { x1:515, y1:142, x2:523, y2:150, b:2 }, // FOREST
+  { x1:521, y1:135, x2:522, y2:140, b:2 }, // FOREST
+  { x1:525, y1:135, x2:525, y2:143, b:2 }, // FOREST
+  { x1:521, y1:138, x2:524, y2:155, b:2 }, // FOREST
+  { x1:520, y1:137, x2:528, y2:147, b:2 }, // FOREST
+  { x1:519, y1:140, x2:519, y2:147, b:2 }, // FOREST
+  { x1:510, y1:135, x2:510, y2:143, b:3 }, // DESERT
+  { x1:510, y1:137, x2:510, y2:142, b:3 }, // DESERT
+  { x1:513, y1:142, x2:513, y2:142, b:3 }, // DESERT
+  { x1:512, y1:141, x2:512, y2:146, b:3 }, // DESERT
+  { x1:511, y1:140, x2:511, y2:150, b:3 }, // DESERT
+  { x1:512, y1:143, x2:512, y2:147, b:3 }, // DESERT
+  { x1:512, y1:143, x2:512, y2:149, b:3 }, // DESERT
+  { x1:511, y1:137, x2:511, y2:146, b:3 }, // DESERT
+  { x1:509, y1:140, x2:509, y2:151, b:3 }, // DESERT
+  { x1:510, y1:143, x2:510, y2:154, b:3 }, // DESERT
+  { x1:537, y1:99, x2:568, y2:137, b:1 }, // PLAINS
+  { x1:539, y1:98, x2:584, y2:99, b:1 }, // PLAINS
+  { x1:557, y1:89, x2:573, y2:120, b:1 }, // PLAINS
+  { x1:555, y1:89, x2:556, y2:114, b:1 }, // PLAINS
+  { x1:574, y1:89, x2:589, y2:137, b:1 }, // PLAINS
+  { x1:590, y1:117, x2:591, y2:137, b:1 }, // PLAINS
+  { x1:567, y1:119, x2:576, y2:139, b:1 }, // PLAINS
+  { x1:542, y1:137, x2:565, y2:139, b:1 }, // PLAINS
+  { x1:580, y1:138, x2:581, y2:139, b:1 }, // PLAINS
+  { x1:566, y1:138, x2:566, y2:139, b:1 }, // PLAINS
+  { x1:543, y1:139, x2:553, y2:148, b:1 }, // PLAINS
+  { x1:96, y1:318, x2:195, y2:349, b:4 }, // TUNDRA
+  { x1:403, y1:89, x2:405, y2:89, b:6 }, // MOUNTAIN
+  { x1:401, y1:89, x2:407, y2:93, b:6 }, // MOUNTAIN
+  { x1:426, y1:98, x2:431, y2:99, b:6 }, // MOUNTAIN
+  { x1:429, y1:101, x2:432, y2:101, b:6 }, // MOUNTAIN
+  { x1:380, y1:88, x2:380, y2:88, b:6 }, // MOUNTAIN
+  { x1:362, y1:88, x2:367, y2:89, b:6 }, // MOUNTAIN
+  { x1:358, y1:92, x2:363, y2:94, b:6 }, // MOUNTAIN
+  { x1:378, y1:77, x2:387, y2:77, b:6 }, // MOUNTAIN
+  { x1:469, y1:49, x2:521, y2:49, b:6 }, // MOUNTAIN
+  { x1:474, y1:64, x2:478, y2:64, b:6 }, // MOUNTAIN
+  { x1:500, y1:68, x2:511, y2:68, b:6 }, // MOUNTAIN
+  { x1:514, y1:72, x2:517, y2:72, b:6 }, // MOUNTAIN
+  { x1:523, y1:72, x2:523, y2:72, b:6 }, // MOUNTAIN
+  { x1:531, y1:69, x2:538, y2:71, b:6 }, // MOUNTAIN
+  { x1:540, y1:74, x2:548, y2:76, b:6 }, // MOUNTAIN
+  { x1:548, y1:76, x2:548, y2:76, b:6 }, // MOUNTAIN
+  { x1:556, y1:70, x2:558, y2:70, b:6 }, // MOUNTAIN
+  { x1:553, y1:78, x2:557, y2:79, b:6 }, // MOUNTAIN
+  { x1:474, y1:73, x2:474, y2:73, b:6 }, // MOUNTAIN
+  { x1:491, y1:73, x2:492, y2:73, b:6 }, // MOUNTAIN
+  { x1:473, y1:71, x2:473, y2:71, b:6 }, // MOUNTAIN
+  { x1:453, y1:71, x2:453, y2:71, b:6 }, // MOUNTAIN
+  { x1:453, y1:77, x2:453, y2:77, b:6 }, // MOUNTAIN
+  { x1:457, y1:52, x2:457, y2:52, b:6 }, // MOUNTAIN
+  { x1:458, y1:77, x2:458, y2:77, b:6 }, // MOUNTAIN
+  { x1:437, y1:77, x2:437, y2:77, b:6 }, // MOUNTAIN
+  { x1:462, y1:64, x2:462, y2:64, b:6 }, // MOUNTAIN
+  { x1:445, y1:69, x2:445, y2:69, b:6 }, // MOUNTAIN
+  { x1:421, y1:68, x2:421, y2:68, b:6 }, // MOUNTAIN
+  { x1:421, y1:73, x2:421, y2:73, b:6 }, // MOUNTAIN
+  { x1:446, y1:69, x2:446, y2:69, b:6 }, // MOUNTAIN
+  { x1:446, y1:69, x2:446, y2:69, b:6 }, // MOUNTAIN
+  { x1:461, y1:67, x2:461, y2:67, b:6 }, // MOUNTAIN
+  { x1:461, y1:67, x2:461, y2:67, b:6 }, // MOUNTAIN
+  { x1:461, y1:67, x2:461, y2:67, b:6 }, // MOUNTAIN
+  { x1:461, y1:67, x2:461, y2:67, b:6 }, // MOUNTAIN
+  { x1:463, y1:67, x2:463, y2:67, b:6 }, // MOUNTAIN
+  { x1:463, y1:67, x2:463, y2:67, b:6 }, // MOUNTAIN
+  { x1:467, y1:67, x2:467, y2:67, b:6 }, // MOUNTAIN
+  { x1:467, y1:67, x2:467, y2:67, b:6 }, // MOUNTAIN
+  { x1:460, y1:66, x2:460, y2:66, b:6 }, // MOUNTAIN
+  { x1:463, y1:65, x2:468, y2:68, b:6 }, // MOUNTAIN
+  { x1:455, y1:64, x2:459, y2:65, b:6 }, // MOUNTAIN
+  { x1:425, y1:62, x2:428, y2:62, b:6 }, // MOUNTAIN
+  { x1:440, y1:61, x2:453, y2:61, b:6 }, // MOUNTAIN
+  { x1:447, y1:61, x2:449, y2:61, b:6 }, // MOUNTAIN
+  { x1:456, y1:62, x2:472, y2:63, b:6 }, // MOUNTAIN
+  { x1:455, y1:55, x2:465, y2:57, b:6 }, // MOUNTAIN
+  { x1:471, y1:61, x2:495, y2:67, b:6 }, // MOUNTAIN
+  { x1:456, y1:57, x2:474, y2:57, b:6 }, // MOUNTAIN
+  { x1:517, y1:71, x2:535, y2:71, b:6 }, // MOUNTAIN
+  { x1:588, y1:76, x2:598, y2:76, b:6 }, // MOUNTAIN
+  { x1:570, y1:75, x2:601, y2:75, b:6 }, // MOUNTAIN
+  { x1:570, y1:75, x2:570, y2:75, b:6 }, // MOUNTAIN
+  { x1:560, y1:72, x2:586, y2:72, b:6 }, // MOUNTAIN
+  { x1:517, y1:89, x2:519, y2:89, b:6 }, // MOUNTAIN
+  { x1:519, y1:104, x2:520, y2:104, b:6 }, // MOUNTAIN
+  { x1:502, y1:118, x2:506, y2:118, b:6 }, // MOUNTAIN
+  { x1:520, y1:118, x2:540, y2:118, b:6 }, // MOUNTAIN
+  { x1:544, y1:114, x2:563, y2:114, b:6 }, // MOUNTAIN
+  { x1:563, y1:111, x2:566, y2:113, b:6 }, // MOUNTAIN
+  { x1:566, y1:115, x2:566, y2:119, b:6 }, // MOUNTAIN
+  { x1:553, y1:105, x2:560, y2:107, b:6 }, // MOUNTAIN
+  { x1:515, y1:104, x2:533, y2:105, b:6 }, // MOUNTAIN
+  { x1:502, y1:106, x2:510, y2:106, b:6 }, // MOUNTAIN
+  { x1:558, y1:127, x2:565, y2:127, b:6 }, // MOUNTAIN
+  { x1:540, y1:124, x2:541, y2:124, b:6 }, // MOUNTAIN
+  { x1:545, y1:126, x2:557, y2:131, b:6 }, // MOUNTAIN
+  { x1:579, y1:110, x2:586, y2:116, b:6 }, // MOUNTAIN
+  { x1:573, y1:101, x2:573, y2:101, b:6 }, // MOUNTAIN
+  { x1:581, y1:104, x2:583, y2:105, b:6 }, // MOUNTAIN
+  { x1:494, y1:127, x2:495, y2:127, b:7 }, // SWAMP
+  { x1:499, y1:125, x2:502, y2:135, b:7 }, // SWAMP
+  { x1:497, y1:131, x2:497, y2:131, b:7 }, // SWAMP
+  { x1:514, y1:132, x2:519, y2:132, b:7 }, // SWAMP
+  { x1:546, y1:137, x2:555, y2:137, b:7 }, // SWAMP
+  { x1:546, y1:149, x2:547, y2:161, b:7 }, // SWAMP
+  { x1:545, y1:153, x2:545, y2:163, b:7 }, // SWAMP
+  { x1:376, y1:168, x2:379, y2:174, b:7 }, // SWAMP
+  { x1:384, y1:182, x2:385, y2:182, b:7 }, // SWAMP
+  { x1:231, y1:182, x2:233, y2:182, b:7 }, // SWAMP
+  { x1:216, y1:182, x2:220, y2:187, b:7 }, // SWAMP
+  { x1:197, y1:178, x2:203, y2:207, b:7 }, // SWAMP
+  { x1:200, y1:173, x2:205, y2:198, b:7 }, // SWAMP
+  { x1:247, y1:138, x2:247, y2:138, b:7 }, // SWAMP
+  { x1:194, y1:135, x2:195, y2:135, b:7 }, // SWAMP
+  { x1:198, y1:121, x2:198, y2:122, b:7 }, // SWAMP
+  { x1:195, y1:118, x2:195, y2:122, b:7 }, // SWAMP
+  { x1:200, y1:104, x2:206, y2:107, b:7 }, // SWAMP
+  { x1:208, y1:95, x2:218, y2:96, b:7 }, // SWAMP
+  { x1:223, y1:91, x2:230, y2:95, b:7 }, // SWAMP
+  { x1:219, y1:85, x2:222, y2:87, b:7 }, // SWAMP
+  { x1:215, y1:87, x2:216, y2:88, b:7 }, // SWAMP
+  { x1:210, y1:86, x2:215, y2:87, b:7 }, // SWAMP
+  { x1:227, y1:83, x2:228, y2:114, b:7 }, // SWAMP
+  { x1:247, y1:82, x2:260, y2:107, b:7 }, // SWAMP
+  { x1:211, y1:101, x2:234, y2:117, b:7 }, // SWAMP
+  { x1:185, y1:85, x2:186, y2:85, b:7 }, // SWAMP
+  { x1:183, y1:81, x2:188, y2:82, b:7 }, // SWAMP
+  { x1:199, y1:82, x2:202, y2:82, b:6 }, // MOUNTAIN
+  { x1:208, y1:78, x2:212, y2:78, b:6 }, // MOUNTAIN
+  { x1:194, y1:90, x2:197, y2:100, b:6 }, // MOUNTAIN
+  { x1:181, y1:83, x2:183, y2:86, b:6 }, // MOUNTAIN
+  { x1:176, y1:86, x2:177, y2:86, b:6 }, // MOUNTAIN
+  { x1:173, y1:75, x2:176, y2:78, b:6 }, // MOUNTAIN
+  { x1:183, y1:106, x2:190, y2:106, b:5 }, // JUNGLE
+  { x1:182, y1:94, x2:183, y2:99, b:5 }, // JUNGLE
+  { x1:185, y1:97, x2:186, y2:101, b:5 }, // JUNGLE
+  { x1:182, y1:104, x2:186, y2:107, b:5 }, // JUNGLE
+  { x1:183, y1:99, x2:188, y2:108, b:5 }, // JUNGLE
+  { x1:189, y1:109, x2:196, y2:120, b:5 }, // JUNGLE
+  { x1:187, y1:102, x2:200, y2:111, b:5 }, // JUNGLE
+  { x1:158, y1:135, x2:169, y2:145, b:5 }, // JUNGLE
+  { x1:158, y1:128, x2:159, y2:128, b:5 }, // JUNGLE
+  { x1:159, y1:128, x2:165, y2:135, b:5 }, // JUNGLE
+  { x1:222, y1:180, x2:243, y2:183, b:5 }, // JUNGLE
+  { x1:224, y1:171, x2:242, y2:182, b:5 }, // JUNGLE
+  { x1:235, y1:186, x2:240, y2:197, b:5 }, // JUNGLE
+  { x1:345, y1:164, x2:357, y2:169, b:5 }, // JUNGLE
+  { x1:407, y1:63, x2:420, y2:72, b:5 }, // JUNGLE
+  { x1:399, y1:74, x2:408, y2:74, b:5 }, // JUNGLE
+  { x1:396, y1:69, x2:408, y2:80, b:5 }, // JUNGLE
+  { x1:505, y1:83, x2:523, y2:87, b:5 }, // JUNGLE
+  { x1:562, y1:86, x2:575, y2:88, b:5 }, // JUNGLE
+  { x1:544, y1:71, x2:564, y2:88, b:5 }, // JUNGLE
+  { x1:566, y1:82, x2:584, y2:97, b:5 }, // JUNGLE
+  { x1:561, y1:82, x2:574, y2:99, b:5 }, // JUNGLE
+  { x1:579, y1:163, x2:655, y2:198, b:5 }, // JUNGLE
+  { x1:244, y1:187, x2:253, y2:215, b:5 }, // JUNGLE
+  { x1:239, y1:178, x2:241, y2:204, b:5 }, // JUNGLE
+  { x1:222, y1:202, x2:237, y2:204, b:5 }, // JUNGLE
+  { x1:240, y1:176, x2:243, y2:200, b:5 }, // JUNGLE
+  { x1:238, y1:186, x2:238, y2:186, b:5 }, // JUNGLE
+  { x1:198, y1:102, x2:200, y2:102, b:5 }, // JUNGLE
+  { x1:191, y1:105, x2:203, y2:124, b:5 }, // JUNGLE
+  { x1:182, y1:108, x2:183, y2:119, b:5 }, // JUNGLE
+  { x1:177, y1:111, x2:184, y2:115, b:5 }, // JUNGLE
+  { x1:182, y1:105, x2:183, y2:115, b:5 }, // JUNGLE
+  { x1:179, y1:111, x2:190, y2:116, b:5 }, // JUNGLE
+  { x1:169, y1:78, x2:174, y2:84, b:5 }, // JUNGLE
+  { x1:57, y1:113, x2:57, y2:113, b:4 }, // TUNDRA
+  { x1:713, y1:24, x2:718, y2:88, b:4 }, // TUNDRA
+  { x1:143, y1:14, x2:347, y2:72, b:4 }, // TUNDRA
+  { x1:372, y1:15, x2:714, y2:48, b:4 }, // TUNDRA
+  { x1:477, y1:50, x2:628, y2:59, b:4 }, // TUNDRA
+  { x1:522, y1:49, x2:669, y2:49, b:4 }, // TUNDRA
+  { x1:621, y1:41, x2:714, y2:59, b:4 }, // TUNDRA
+  { x1:368, y1:49, x2:396, y2:58, b:4 }, // TUNDRA
+  { x1:0, y1:109, x2:110, y2:285, b:5 }, // JUNGLE
+  { x1:164, y1:174, x2:185, y2:189, b:5 }, // JUNGLE
+  { x1:283, y1:280, x2:287, y2:286, b:5 }, // JUNGLE
+  { x1:282, y1:281, x2:300, y2:298, b:5 }, // JUNGLE
+  { x1:295, y1:288, x2:317, y2:296, b:5 }, // JUNGLE
+  { x1:481, y1:268, x2:541, y2:299, b:5 }, // JUNGLE
+  { x1:38, y1:147, x2:38, y2:148, b:5 }, // JUNGLE
+  { x1:73, y1:16, x2:147, y2:72, b:4 }, // TUNDRA
+  { x1:0, y1:25, x2:177, y2:71, b:4 }, // TUNDRA
+];
+
+
     // Increase this to make the world feel MASSIVE by adding more cells (not just scaling).
     // Tip: 2 = 4x cells, 3 = 9x cells (may be heavy on slower machines).
     const WORLD_FACTOR = 4;
@@ -1483,41 +2079,26 @@ if (!ROLE) {
       'wss://tracker.webtorrent.dev'
     ];
 
-    // TURN relay (fixes strict networks like many school Wi‑Fi setups)
-    // When hosted on Cloudflare Pages, this resolves to same-origin.
-    // When opened as a local file (file://), set ICE_FALLBACK_URL to your Pages/custom domain.
-    const ICE_FALLBACK_URL = '${location.origin}/api/ice';
-    const ICE_URL = (location.protocol === 'http:' || location.protocol === 'https:') ? '/api/ice' : ICE_FALLBACK_URL;
-
-    async function fetchIceServers() {
-      const r = await fetch(ICE_URL, { cache: 'no-store' });
-      if (!r.ok) throw new Error(`ICE endpoint returned ${r.status}`);
-      const data = await r.json();
-      // Metered returns an ARRAY of ICE server objects. Some proxies might wrap it.
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.iceServers)) return data.iceServers;
-      throw new Error('ICE endpoint did not return an ICE server array');
-    }
-
     const rtcConfig = {
       iceServers: [
-        // Cloudflare STUN is free/unlimited; keep this as a baseline fallback.
-        { urls: ['stun:stun.cloudflare.com:3478'] },
         { urls: ['stun:stun.l.google.com:19302'] },
         { urls: ['stun:stun1.l.google.com:19302'] },
-        { urls: ['stun:stun2.l.google.com:19302'] }
+        { urls: ['stun:stun2.l.google.com:19302'] },
+            // ADD TURN (this is the important part)
+        {
+          urls: [
+            // UDP (fast when allowed)
+            'turn:YOUR_TURN_DOMAIN:3478?transport=udp',
+            // TCP (often works when UDP is blocked)
+            'turn:YOUR_TURN_DOMAIN:3478?transport=tcp',
+            // TLS over 443 (best chance on strict networks)
+            'turns:YOUR_TURN_DOMAIN:443?transport=tcp'
+          ],
+          username: 'TURN_USER',
+          credential: 'TURN_PASS'
+        }
       ]
     };
-
-    try {
-      const iceServers = await fetchIceServers();
-      if (Array.isArray(iceServers) && iceServers.length) {
-        rtcConfig.iceServers = iceServers;
-        console.log('[ICE] Loaded TURN/STUN config from', ICE_URL);
-      }
-    } catch (err) {
-      console.warn('[ICE] Using STUN-only fallback (TURN not loaded):', err);
-    }
 
     const roomId = initialRoomId;
     document.getElementById('roomLabel').textContent = roomId;
@@ -1599,6 +2180,25 @@ if (!ROLE) {
     const cfgCloseBtnEl = document.getElementById('cfgCloseBtn');
     const cfgResetAllBtnEl = document.getElementById('cfgResetAllBtn');
     const cfgSaveLocalBtnEl = document.getElementById('cfgSaveLocalBtn');
+
+
+// Biome config overlay (host tool)
+const biomeCfgBtn = document.getElementById('biomeCfgBtn');
+const lobbyBiomeCfgBtnEl = document.getElementById('lobbyBiomeCfgBtn');
+const biomeCfgOverlay = document.getElementById('biomeCfgOverlay');
+const cfgBiomeSelectEl = document.getElementById('cfgBiomeSelect');
+const biomeRectCountEl = document.getElementById('biomeRectCount');
+const biomeRectListEl = document.getElementById('biomeRectList');
+const biomeCfgOutEl = document.getElementById('biomeCfgOut');
+const biomeCopyBtnEl = document.getElementById('biomeCopyBtn');
+const biomeCloseBtnEl = document.getElementById('biomeCloseBtn');
+const biomeUndoBtnEl = document.getElementById('biomeUndoBtn');
+const biomeClearBtnEl = document.getElementById('biomeClearBtn');
+
+// Nations are now hardcoded; hide the old nation-spawn config buttons.
+if (nationCfgBtn) nationCfgBtn.hidden = true;
+if (lobbyNationCfgBtnEl) lobbyNationCfgBtnEl.hidden = true;
+
 
 
     let lobbyPhase = 0; // 0=lobby, 1=playing
@@ -2144,11 +2744,214 @@ setTimeout(() => {
       return { wx: viewX + mx / viewScale, wy: viewY + my / viewScale };
     }
 
+    
+
+// -----------------------------
+// Biome region config (host-only utility)
+// -----------------------------
+const BIOME_RECTS_KEY = 'px_biome_rects_v1_' + roomId + '_wf' + WORLD_FACTOR;
+let biomeCfgPrevLobbyWasOpen = false;
+let biomeCfgActive = false;
+
+let biomeRects = [];
+const biomeMap = new Uint8Array(CELL_COUNT);
+
+function loadBiomeRects() {
+  // Prefer local saved config; fall back to the hardcoded array.
+  let rects = null;
+  try {
+    const raw = localStorage.getItem(BIOME_RECTS_KEY);
+    if (raw) rects = JSON.parse(raw);
+  } catch (_) {}
+  if (!Array.isArray(rects)) rects = BIOME_RECTS_HARDCODED;
+  biomeRects = rects.map(r => ({
+    x1: r.x1|0, y1: r.y1|0, x2: r.x2|0, y2: r.y2|0, b: r.b|0
+  }));
+  rebuildBiomeMap();
+  refreshBiomeCfgUI();
+}
+
+function saveBiomeRects() {
+  try { localStorage.setItem(BIOME_RECTS_KEY, JSON.stringify(biomeRects)); } catch {}
+}
+
+function clampRect(r) {
+  let x1 = clamp(Math.min(r.x1, r.x2), 0, GW - 1) | 0;
+  let y1 = clamp(Math.min(r.y1, r.y2), 0, GH - 1) | 0;
+  let x2 = clamp(Math.max(r.x1, r.x2), 0, GW - 1) | 0;
+  let y2 = clamp(Math.max(r.y1, r.y2), 0, GH - 1) | 0;
+  return { x1, y1, x2, y2, b: r.b|0 };
+}
+
+function rebuildBiomeMap() {
+  biomeMap.fill(0);
+  for (const rr of biomeRects) {
+    const r = clampRect(rr);
+    const b = r.b | 0;
+    if (!b) continue;
+    for (let y = r.y1; y <= r.y2; y++) {
+      let base = y * GW;
+      for (let x = r.x1; x <= r.x2; x++) biomeMap[base + x] = b;
+    }
+  }
+}
+
+function setBiomeSelectOptions() {
+  if (!cfgBiomeSelectEl) return;
+  cfgBiomeSelectEl.innerHTML = '';
+  for (const b of BIOME_DEFS) {
+    const opt = document.createElement('option');
+    opt.value = String(b.id);
+    opt.textContent = b.label;
+    cfgBiomeSelectEl.appendChild(opt);
+  }
+  cfgBiomeSelectEl.value = '1';
+}
+
+function renderBiomeRectList() {
+  if (!biomeRectListEl) return;
+  biomeRectListEl.innerHTML = '';
+  const show = biomeRects.slice().reverse().slice(0, 40); // newest first
+  if (!show.length) {
+    const empty = document.createElement('div');
+    empty.className = 'small';
+    empty.style.opacity = '0.8';
+    empty.textContent = '— no rectangles yet';
+    biomeRectListEl.appendChild(empty);
+    return;
+  }
+  for (let k = 0; k < show.length; k++) {
+    const r = show[k];
+    const row = document.createElement('div');
+    row.className = 'cfgItem';
+    const b = BIOME_BY_ID.get(r.b|0);
+    const rgb = b ? b.rgb : [160,160,160];
+    const left = document.createElement('div');
+    left.className = 'mono';
+    left.innerHTML =
+      `<span class="biomeSwatch" style="background: rgb(${rgb[0]},${rgb[1]},${rgb[2]});"></span>` +
+      `${b ? b.key : 'NONE'}  [${r.x1},${r.y1}]→[${r.x2},${r.y2}]`;
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.gap = '8px';
+    const del = document.createElement('button');
+    del.className = 'ghostBtn';
+    del.textContent = 'Delete';
+    del.onclick = () => {
+      const idx = biomeRects.lastIndexOf(r);
+      if (idx >= 0) biomeRects.splice(idx, 1);
+      rebuildBiomeMap();
+      saveBiomeRects();
+      refreshBiomeCfgUI();
+    };
+    right.appendChild(del);
+    row.appendChild(left);
+    row.appendChild(right);
+    biomeRectListEl.appendChild(row);
+  }
+}
+
+function buildBiomeCfgSnippet() {
+  const lines = [];
+  lines.push('// Paste into index.html near BIOME_RECTS_HARDCODED');
+  lines.push('const BIOME_RECTS_HARDCODED = [');
+  for (const r0 of biomeRects) {
+    const r = clampRect(r0);
+    const b = BIOME_BY_ID.get(r.b|0);
+    const key = b ? b.key : 'PLAINS';
+    lines.push(`  { x1:${r.x1}, y1:${r.y1}, x2:${r.x2}, y2:${r.y2}, b:${r.b} }, // ${key}`);
+  }
+  lines.push('];');
+  lines.push('');
+  return lines.join('\n');
+}
+
+function refreshBiomeCfgUI() {
+  if (biomeRectCountEl) biomeRectCountEl.textContent = String(biomeRects.length);
+  renderBiomeRectList();
+  if (biomeCfgOutEl) biomeCfgOutEl.value = buildBiomeCfgSnippet();
+}
+
+function openBiomeCfg() {
+  if (!isHost) { setNetLabel('Only the host can configure biomes', 'warn'); return; }
+
+  biomeCfgActive = true;
+
+  biomeCfgPrevLobbyWasOpen = (!lobbyOverlay.hidden);
+  if (biomeCfgPrevLobbyWasOpen) lobbyOverlay.hidden = true;
+
+  if (biomeCfgOverlay) biomeCfgOverlay.hidden = false;
+  refreshBiomeCfgUI();
+  setNetLabel('Biome config opened', 'good');
+}
+
+function closeBiomeCfg() {
+  biomeCfgActive = false;
+  if (biomeCfgOverlay) biomeCfgOverlay.hidden = true;
+
+  if (biomeCfgPrevLobbyWasOpen) lobbyOverlay.hidden = false;
+  biomeCfgPrevLobbyWasOpen = false;
+
+  biomeDragActive = false;
+  biomeDragStart = biomeDragEnd = null;
+
+  setNetLabel('Biome config closed', 'good');
+}
+
+function addBiomeRectFromCells(a, b, biomeId) {
+  const rr = clampRect({ x1:a.x|0, y1:a.y|0, x2:b.x|0, y2:b.y|0, b: biomeId|0 });
+  biomeRects.push(rr);
+  rebuildBiomeMap();
+  saveBiomeRects();
+  refreshBiomeCfgUI();
+}
+
+// Drag paint state (handled at pointer layer)
+let biomeDragActive = false;
+let biomeDragStart = null;
+let biomeDragEnd = null;
+
+if (biomeCfgBtn) biomeCfgBtn.onclick = openBiomeCfg;
+if (lobbyBiomeCfgBtnEl) lobbyBiomeCfgBtnEl.onclick = openBiomeCfg;
+if (biomeCloseBtnEl) biomeCloseBtnEl.onclick = closeBiomeCfg;
+
+if (biomeUndoBtnEl) biomeUndoBtnEl.onclick = () => {
+  if (!isHost) return;
+  biomeRects.pop();
+  rebuildBiomeMap();
+  saveBiomeRects();
+  refreshBiomeCfgUI();
+};
+if (biomeClearBtnEl) biomeClearBtnEl.onclick = () => {
+  if (!isHost) return;
+  biomeRects.length = 0;
+  rebuildBiomeMap();
+  saveBiomeRects();
+  refreshBiomeCfgUI();
+};
+if (biomeCopyBtnEl) biomeCopyBtnEl.onclick = async () => {
+  try { await navigator.clipboard.writeText(buildBiomeCfgSnippet()); } catch (_) {}
+  setNetLabel('Biome config copied', 'good');
+};
+
+// init biome tool
+setBiomeSelectOptions();
+loadBiomeRects();
+
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
+
+// Biome drag paint: update selection rectangle (no panning).
+if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
+  const p = mouseToCell(e);
+  if (p) biomeDragEnd = p;
+  e.preventDefault();
+  return;
+}
+
 
       const { wx, wy } = screenToWorld(mx, my);
 
@@ -2196,6 +2999,19 @@ setTimeout(() => {
       panStart.vx = viewX;
       panStart.vy = viewY;
 
+// Biome drag paint (while overlay open): left-drag paints rectangles.
+if (!biomeCfgOverlay.hidden && e.button === 0 && !spaceDown && isHost) {
+  biomeDragActive = true;
+  biomeDragStart = mouseToCell(e);
+  biomeDragEnd = biomeDragStart;
+  pointerMoved = true; // prevent click-path
+  isPanning = false;
+  canvas.style.cursor = 'crosshair';
+  e.preventDefault();
+  return;
+}
+
+
       // Middle-mouse (or Space+drag) begins panning immediately.
       isPanning = (e.button === 1) || (e.button === 0 && spaceDown);
       canvas.style.cursor = isPanning ? 'grabbing' : 'crosshair';
@@ -2208,6 +3024,15 @@ setTimeout(() => {
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
+
+// Biome drag paint: update selection rectangle (no panning).
+if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
+  const p = mouseToCell(e);
+  if (p) biomeDragEnd = p;
+  e.preventDefault();
+  return;
+}
+
 
       const dxPx = mx - panStart.mx;
       const dyPx = my - panStart.my;
@@ -2239,6 +3064,19 @@ setTimeout(() => {
       isPanning = false;
       activePointerId = null;
       canvas.style.cursor = 'crosshair';
+
+// Finalize biome drag paint (host-only)
+if (biomeDragActive && !biomeCfgOverlay.hidden && isHost) {
+  const a = biomeDragStart;
+  const b = biomeDragEnd || biomeDragStart;
+  const sel = parseInt(cfgBiomeSelectEl.value || '1', 10) || 1;
+  const biomeId = e.shiftKey ? 0 : sel;
+  if (a && b) addBiomeRectFromCells(a, b, biomeId);
+  biomeDragActive = false;
+  biomeDragStart = biomeDragEnd = null;
+  return;
+}
+
 
       // If it wasn't a drag-pan, treat it as a click/tap (primary button only).
       if (!wasPanning && downButton === 0) handleMapPress(e);
@@ -3683,6 +4521,16 @@ function colorForOwner(o) {
       if (!p) return;
       const i = idx(p.x, p.y);
 
+      
+
+// Biome region config click/drag (host-only)
+if (!biomeCfgOverlay.hidden && isHost) {
+  const sel = parseInt(cfgBiomeSelectEl.value || '1', 10) || 1;
+  const biomeId = e.shiftKey ? 0 : sel;
+  addBiomeRectFromCells(p, p, biomeId);
+  return;
+}
+
       // Nation spawn config pick (host-only)
       if (!nationCfgOverlay.hidden && nationCfgPickMode && isHost) {
         const k = String(cfgNationSelectEl.value || '').toUpperCase();
@@ -3891,8 +4739,27 @@ function mouseToCell(e) {
         const p = i * 4;
         data[p]     = Math.floor(c[0] * shade);
         data[p + 1] = Math.floor(c[1] * shade);
-        data[p + 2] = Math.floor(c[2] * shade);
-        data[p + 3] = 255;
+        
+data[p + 2] = Math.floor(c[2] * shade);
+
+// Biome tint overlay (always visible; stronger while config is open)
+{
+  const showBiomes = biomeCfgActive || SHOW_BIOMES_ON_MAP;
+  if (showBiomes) {
+    const bid = biomeMap[i] | 0;
+    if (bid && o !== -2) {
+      const bc = biomeColorFor(bid);
+      if (bc) {
+        const a = biomeCfgActive ? BIOME_ALPHA_CONFIG : BIOME_ALPHA_PLAY;
+        data[p]     = Math.floor(data[p]     * (1 - a) + bc[0] * a);
+        data[p + 1] = Math.floor(data[p + 1] * (1 - a) + bc[1] * a);
+        data[p + 2] = Math.floor(data[p + 2] * (1 - a) + bc[2] * a);
+      }
+    }
+  }
+}
+
+data[p + 3] = 255;
       }
 
       if (selectedIdx >= 0) {
@@ -3929,6 +4796,34 @@ function mouseToCell(e) {
       // Territory pixels (scaled up so the full world is 10x larger in world-space).
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(off, 0, 0, WORLD_W, WORLD_H);
+
+      
+
+// Biome drag preview (only while Biome Config is open)
+if (!biomeCfgOverlay.hidden && biomeDragActive && biomeDragStart && biomeDragEnd) {
+  const x1 = Math.min(biomeDragStart.x, biomeDragEnd.x);
+  const y1 = Math.min(biomeDragStart.y, biomeDragEnd.y);
+  const x2 = Math.max(biomeDragStart.x, biomeDragEnd.x);
+  const y2 = Math.max(biomeDragStart.y, biomeDragEnd.y);
+  const wx = x1 * MAP_SCALE;
+  const wy = y1 * MAP_SCALE;
+  const ww = (x2 - x1 + 1) * MAP_SCALE;
+  const wh = (y2 - y1 + 1) * MAP_SCALE;
+
+  const sel = parseInt(cfgBiomeSelectEl.value || '1', 10) || 1;
+  const bid = sel | 0;
+  const bc = biomeColorFor(bid) || [220, 220, 220];
+
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = `rgb(${bc[0]},${bc[1]},${bc[2]})`;
+  ctx.fillRect(wx, wy, ww, wh);
+  ctx.globalAlpha = 0.65;
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth = 0.18 * MAP_SCALE;
+  ctx.strokeRect(wx, wy, ww, wh);
+  ctx.restore();
+}
 
       // Nation spawn markers (visible while Nation Config is open)
       if (!nationCfgOverlay.hidden) {
